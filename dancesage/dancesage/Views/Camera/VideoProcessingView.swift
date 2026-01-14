@@ -46,8 +46,16 @@ struct VideoProcessingView: View {
                     .font(.headline)
                     .foregroundColor(.green)
                 
+                let totalPeople = videoProcessor.keypoints.flatMap { $0 }.count
+                let avgPeoplePerFrame = totalPeople > 0 ? Double(totalPeople) / Double(videoProcessor.keypoints.count) : 0
+                let modeText = isPartnerMode ? "Partner" : "Styling"
+                
                 Text("Detected \(videoProcessor.keypoints.count) frames")
                     .font(.subheadline)
+                
+                Text("Mode: \(modeText) | Avg \(String(format: "%.1f", avgPeoplePerFrame)) people/frame")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                 
                 Button("View Skeleton") {
                     showPlayback = true

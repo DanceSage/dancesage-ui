@@ -108,10 +108,12 @@ class VideoProcessor: ObservableObject {
                 return nil
             }
             
-            // Detect ALL people (styling = green, partner = red)
+            // Detect ALL people - Vision can detect multiple people per frame
             var allPeople: [[CGPoint]] = []
             
-            for observation in observations {
+            print("👥 Vision detected \(observations.count) person(s) in this frame")
+            
+            for (index, observation) in observations.enumerated() {
                 var points: [CGPoint] = []
                 
                 for joint in jointOrder {
@@ -125,6 +127,8 @@ class VideoProcessor: ObservableObject {
                 }
                 
                 allPeople.append(points)
+                let validPoints = points.filter { $0.x >= 0 && $0.y >= 0 }.count
+                print("  Person \(index + 1): \(validPoints)/17 valid keypoints")
             }
             
             // Sort by X position (leftmost person first) for consistent coloring
