@@ -44,7 +44,7 @@ struct LandingView: View {
             
             // Upload Video Button
             Button(action: {
-                showVideoPicker = true
+                showVideoModeSelection = true
             }) {
                 Text("UPLOAD VIDEO")
                     .font(.system(size: 20, weight: .semibold))
@@ -93,14 +93,14 @@ struct LandingView: View {
                 selectedMode: $videoMode,
                 onModeSelected: {
                     showVideoModeSelection = false
-                    showVideoProcessing = true
+                    showVideoPicker = true
                 }
             )
         }
         .onChange(of: selectedVideoURL) { oldValue, newValue in
             if newValue != nil {
-                // Show mode selection after picking video
-                showVideoModeSelection = true
+                // Video selected, now process it with the chosen mode
+                showVideoProcessing = true
             }
         }
     }
