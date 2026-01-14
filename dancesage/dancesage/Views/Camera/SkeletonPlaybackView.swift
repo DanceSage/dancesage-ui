@@ -215,6 +215,7 @@ struct SkeletonPlaybackView: View {
         
         let recording = DanceRecording(name: recordingName, keypoints: keypoints)
         
+        // Save locally
         do {
             var savedRecordings = loadAllRecordings()
             savedRecordings.append(recording)
@@ -222,13 +223,22 @@ struct SkeletonPlaybackView: View {
             let allData = try JSONEncoder().encode(savedRecordings)
             UserDefaults.standard.set(allData, forKey: "savedDances")
             
-            print("✅ Saved recording: \(recordingName)")
-            recordingName = ""
-            dismiss()  // Close playback after saving
-            
+            print("✅ Saved recording locally: \(recordingName)")
         } catch {
-            print("❌ Failed to save: \(error)")
+            print("❌ Failed to save locally: \(error)")
         }
+        
+        // Send to backend
+        Task {
+            do {
+                try await APIService.shared.uploadKeypoints(recording)
+            } catch {
+                print("❌ Failed to upload to backend: \(error)")
+            }
+        }
+        
+        recordingName = ""
+        dismiss()  // Close playback after saving
     }
     
     func loadAllRecordings() -> [DanceRecording] {
