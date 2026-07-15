@@ -62,6 +62,12 @@ final class RecordingStore {
             .appendingPathComponent(recording.videoFilename)
     }
 
+    func existingVideoURL(for recording: DanceRecording) -> URL? {
+        guard recording.hasVideo == true else { return nil }
+        let url = videoURL(for: recording)
+        return fileManager.fileExists(atPath: url.path) ? url : nil
+    }
+
     private func save(_ recordings: [DanceRecording]) throws {
         let url = try recordingsURL()
         let data = try JSONEncoder().encode(recordings)

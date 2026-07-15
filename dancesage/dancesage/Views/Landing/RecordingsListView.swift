@@ -3,7 +3,6 @@ import SwiftUI
 struct RecordingsListView: View {
     @State private var recordings: [DanceRecording] = []
     @State private var selectedRecording: DanceRecording?
-    @State private var showPlayback = false
     @State private var errorMessage = ""
     @Environment(\.dismiss) var dismiss
     
@@ -24,7 +23,6 @@ struct RecordingsListView: View {
                         ForEach(recordings) { recording in
                             Button(action: {
                                 selectedRecording = recording
-                                showPlayback = true
                             }) {
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text(recording.name)
@@ -59,20 +57,18 @@ struct RecordingsListView: View {
             .onAppear {
                 loadRecordings()
             }
-            .fullScreenCover(isPresented: $showPlayback) {
-                if let recording = selectedRecording {
-                    SkeletonPlaybackView(
-                        keypoints: recording.keypoints,
-                        allowSave: false,
-                        beats: recording.beats ?? [],
-                        bpm: recording.bpm ?? 0,
-                        fps: recording.effectiveFPS,
-                        frameTimes: recording.effectiveFrameTimes,
-                        recordingMode: recording.mode ?? .styling,
-                        videoURL: recording.hasVideo == true ? RecordingStore.shared.videoURL(for: recording) : nil,
-                        cameraPosition: recording.cameraPosition
-                    )
-                }
+            .fullScreenCover(item: $selectedRecording) { recording in
+                SkeletonPlaybackView(
+                    keypoints: recording.keypoints,
+                    allowSave: false,
+                    beats: recording.beats ?? [],
+                    bpm: recording.bpm ?? 0,
+                    fps: recording.effectiveFPS,
+                    frameTimes: recording.effectiveFrameTimes,
+                    recordingMode: recording.mode ?? .styling,
+                    videoURL: RecordingStore.shared.existingVideoURL(for: recording),
+                    cameraPosition: recording.cameraPosition
+                )
             }
             .alert("Recording Error", isPresented: Binding(
                 get: { !errorMessage.isEmpty },

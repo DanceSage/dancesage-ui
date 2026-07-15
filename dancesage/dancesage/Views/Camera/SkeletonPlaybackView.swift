@@ -140,13 +140,28 @@ struct SkeletonPlaybackView: View {
                 }
 
                 if videoURL != nil {
-                    Picker("Display", selection: $displayMode) {
+                    HStack(spacing: 8) {
                         ForEach(PlaybackDisplayMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
+                            Button {
+                                displayMode = mode
+                            } label: {
+                                Text(mode.rawValue)
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(
+                                        displayMode == mode ? Color.blue : Color.black.opacity(0.78),
+                                        in: RoundedRectangle(cornerRadius: 10)
+                                    )
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(.white.opacity(0.8), lineWidth: 1)
+                                    }
+                            }
                         }
                     }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal, 70)
+                    .padding(.horizontal, 48)
                 }
                 
                 Spacer()

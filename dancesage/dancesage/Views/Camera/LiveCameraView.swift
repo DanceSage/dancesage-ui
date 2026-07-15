@@ -63,6 +63,8 @@ struct LiveCameraView: UIViewRepresentable {
         private let visionDetector: VisionPoseDetector
 
         private weak var previewLayer: AVCaptureVideoPreviewLayer?
+        private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
+        private var currentVideoDevice: AVCaptureDevice?
         private var currentPosition: AVCaptureDevice.Position = .unspecified
         private var desiredPosition: AVCaptureDevice.Position
         private var isPartnerMode: Bool
@@ -191,6 +193,7 @@ struct LiveCameraView: UIViewRepresentable {
                   session.canAddInput(input) else { return false }
             session.addInput(input)
             currentPosition = position
+            currentVideoDevice = device
             return true
         }
 
@@ -220,9 +223,20 @@ struct LiveCameraView: UIViewRepresentable {
 
         private func configureConnections(position: AVCaptureDevice.Position) {
             let isFront = position == .front
+            if let currentVideoDevice {
+                rotationCoordinator = AVCaptureDevice.RotationCoordinator(
+                    device: currentVideoDevice,
+                    previewLayer: previewLayer
+                )
+            }
+            let captureAngle = rotationCoordinator?.videoRotationAngleForHorizonLevelCapture ?? 90
+            let previewAngle = rotationCoordinator?.videoRotationAngleForHorizonLevelPreview ?? captureAngle
+
             [videoOutput.connection(with: .video), movieOutput.connection(with: .video)].forEach { connection in
                 guard let connection else { return }
-                if connection.isVideoRotationAngleSupported(90) { connection.videoRotationAngle = 90 }
+                if connection.isVideoRotationAngleSupported(captureAngle) {
+                    connection.videoRotationAngle = captureAngle
+                }
                 if connection.isVideoMirroringSupported {
                     connection.automaticallyAdjustsVideoMirroring = false
                     connection.isVideoMirrored = isFront
@@ -231,7 +245,9 @@ struct LiveCameraView: UIViewRepresentable {
 
             DispatchQueue.main.async { [weak self] in
                 guard let connection = self?.previewLayer?.connection else { return }
-                if connection.isVideoRotationAngleSupported(90) { connection.videoRotationAngle = 90 }
+                if connection.isVideoRotationAngleSupported(previewAngle) {
+                    connection.videoRotationAngle = previewAngle
+                }
                 if connection.isVideoMirroringSupported {
                     connection.automaticallyAdjustsVideoMirroring = false
                     connection.isVideoMirrored = isFront
