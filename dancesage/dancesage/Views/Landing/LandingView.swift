@@ -25,59 +25,88 @@ struct LandingView: View {
     }
     
     var body: some View {
-        VStack(spacing: 30) {
-            Spacer()
-            
-            Image("AppLogo")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 200, height: 200)
-            
-            Text("Dance Sage")
-                .font(.system(size: 36, weight: .bold))
-                .foregroundColor(.white)
-            
-            Spacer()
-            
-            // Live Camera Button
-            Button(action: {
-                showModeSelection = true
-            }) {
-                Text("RECORD LIVE")
-                    .font(.system(size: 20, weight: .semibold))
+        ZStack {
+            logoBackground
+                .ignoresSafeArea()
+
+            // Soft glows borrow the jewel colors from the logo without competing with it.
+            Circle()
+                .fill(Color.green.opacity(0.12))
+                .frame(width: 220, height: 220)
+                .blur(radius: 55)
+                .offset(x: -175, y: -330)
+
+            Circle()
+                .fill(Color.orange.opacity(0.15))
+                .frame(width: 210, height: 210)
+                .blur(radius: 60)
+                .offset(x: 175, y: -235)
+
+            VStack(spacing: 0) {
+                Spacer(minLength: 20)
+
+                Image("AppLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 220, height: 220)
+
+                Text("DanceSage")
+                    .font(.system(size: 38, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
-                    .frame(width: 250, height: 60)
-                    .background(Color.blue)
-                    .cornerRadius(30)
+
+                Text("See the movement. Refine the style.")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white.opacity(0.72))
+                    .padding(.top, 7)
+
+                Spacer(minLength: 30)
+
+                VStack(spacing: 14) {
+                    Button {
+                        showModeSelection = true
+                    } label: {
+                        LandingActionLabel(
+                            title: "Record Live",
+                            subtitle: "Use the front or back camera",
+                            icon: "camera.fill",
+                            accent: .orange
+                        )
+                    }
+
+                    Button {
+                        showVideoModeSelection = true
+                    } label: {
+                        LandingActionLabel(
+                            title: "Upload Video",
+                            subtitle: "Analyze a video from your phone",
+                            icon: "play.rectangle.fill",
+                            accent: .green
+                        )
+                    }
+
+                    Button {
+                        showRecordings = true
+                    } label: {
+                        LandingActionLabel(
+                            title: "My Recordings",
+                            subtitle: "Return to your saved sessions",
+                            icon: "square.stack.fill",
+                            accent: .purple
+                        )
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 22)
+
+                Label("Private • Processed on this iPhone", systemImage: "lock.fill")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.55))
+                    .padding(.bottom, 12)
             }
-            
-            // Upload Video Button
-            Button(action: {
-                showVideoModeSelection = true
-            }) {
-                Text("UPLOAD VIDEO")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 250, height: 60)
-                    .background(Color.green)
-                    .cornerRadius(30)
-            }
-            
-            // My Recordings Button
-            Button(action: {
-                showRecordings = true
-            }) {
-                Text("MY RECORDINGS")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 250, height: 60)
-                    .background(Color.purple)
-                    .cornerRadius(30)
-            }
-            
-            Spacer()
+            .padding(.horizontal, 28)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(logoBackground.ignoresSafeArea())
         .sheet(isPresented: $showModeSelection) {
             ModeSelectionView(
                 selectedMode: $selectedMode,
@@ -126,6 +155,47 @@ struct LandingView: View {
         guard let selectedVideoURL else { return }
         try? FileManager.default.removeItem(at: selectedVideoURL)
         self.selectedVideoURL = nil
+    }
+}
+
+private struct LandingActionLabel: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let accent: Color
+
+    var body: some View {
+        HStack(spacing: 15) {
+            Image(systemName: icon)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundColor(accent)
+                .frame(width: 46, height: 46)
+                .background(accent.opacity(0.16), in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                Text(subtitle)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.62))
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(.white.opacity(0.45))
+        }
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
+        .frame(height: 68)
+        .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 20))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(Color.white.opacity(0.14), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.12), radius: 14, y: 8)
     }
 }
 
