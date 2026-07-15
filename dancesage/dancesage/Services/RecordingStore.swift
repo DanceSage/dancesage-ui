@@ -17,19 +17,49 @@ final class RecordingStore {
         return try JSONDecoder().decode([DanceRecording].self, from: Data(contentsOf: url))
     }
 
-    func append(_ recording: DanceRecording) throws {
+    func append(_ recording: DanceRecording, videoSourceURL: URL? = nil) throws {
         var recordings = try load()
+        var copiedVideoURL: URL?
+        if let videoSourceURL {
+            let destination = try videosDirectoryURL().appendingPathComponent(recording.videoFilename)
+            if fileManager.fileExists(atPath: destination.path) {
+                try fileManager.removeItem(at: destination)
+            }
+            try fileManager.copyItem(at: videoSourceURL, to: destination)
+            copiedVideoURL = destination
+        }
         recordings.append(recording)
-        try save(recordings)
+        do {
+            try save(recordings)
+        } catch {
+            if let copiedVideoURL { try? fileManager.removeItem(at: copiedVideoURL) }
+            throw error
+        }
     }
 
     func delete(at offsets: IndexSet) throws -> [DanceRecording] {
         var recordings = try load()
         for index in offsets.sorted(by: >) where recordings.indices.contains(index) {
-            recordings.remove(at: index)
+            let recording = recordings.remove(at: index)
+            if recording.hasVideo == true {
+                try? fileManager.removeItem(at: videoURL(for: recording))
+            }
         }
         try save(recordings)
         return recordings
+    }
+
+    func videoURL(for recording: DanceRecording) -> URL {
+        let root = try? fileManager.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        return (root ?? fileManager.temporaryDirectory)
+            .appendingPathComponent("DanceSage", isDirectory: true)
+            .appendingPathComponent("Videos", isDirectory: true)
+            .appendingPathComponent(recording.videoFilename)
     }
 
     private func save(_ recordings: [DanceRecording]) throws {
@@ -49,6 +79,14 @@ final class RecordingStore {
             .appendingPathComponent("DanceSage", isDirectory: true)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory.appendingPathComponent("recordings.json")
+    }
+
+    private func videosDirectoryURL() throws -> URL {
+        let directory = try recordingsURL()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Videos", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
     }
 
     private func migrateLegacyRecordingsIfNeeded() throws {

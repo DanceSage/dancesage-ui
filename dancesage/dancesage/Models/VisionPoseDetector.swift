@@ -45,10 +45,8 @@ class VisionPoseDetector: ObservableObject {
     
     /// Detect poses from pixel buffer (used by live camera for accurate coordinates)
     func detectPoses(in pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation) {
-        // Store video dimensions (after rotation)
-        // For .right orientation, width and height are swapped
-        videoWidth = CGFloat(CVPixelBufferGetHeight(pixelBuffer))  // Swapped due to rotation
-        videoHeight = CGFloat(CVPixelBufferGetWidth(pixelBuffer))  // Swapped due to rotation
+        videoWidth = CGFloat(CVPixelBufferGetWidth(pixelBuffer))
+        videoHeight = CGFloat(CVPixelBufferGetHeight(pixelBuffer))
         
         let request = VNDetectHumanBodyPoseRequest { [weak self] request, error in
             self?.handlePoseDetection(request: request, error: error)
@@ -102,10 +100,9 @@ class VisionPoseDetector: ObservableObject {
             
             for joint in jointOrder {
                 if let point = try? observation.recognizedPoint(joint), point.confidence > 0.1 {
-                    // Vision coordinates are normalized (0-1) with origin at bottom-left
-                    // Transform to match resizeAspectFill preview
-                    let transformed = transformForAspectFill(point: point.location)
-                    points.append(transformed)
+                    // Keep coordinates in video space. SkeletonOverlay applies the same
+                    // aspect-fill transform used by the camera and video player.
+                    points.append(CGPoint(x: point.location.x, y: 1.0 - point.location.y))
                 } else {
                     // Use invalid point for missing joints
                     points.append(CGPoint(x: -1, y: -1))
@@ -140,37 +137,6 @@ class VisionPoseDetector: ObservableObject {
         }
         
         print("👥 Total detected: \(allPoses.count) person(s)")
-    }
-    
-    /// Transform Vision coordinates to match resizeAspectFill preview
-    private func transformForAspectFill(point: CGPoint) -> CGPoint {
-        // Vision returns normalized coordinates (0-1) in video frame space
-        // The preview uses resizeAspectFill which crops to fill the screen
-        
-        // Get screen aspect ratio (portrait phone ~9:19.5 or ~0.46)
-        let screenWidth = UIScreen.main.bounds.width
-        let screenHeight = UIScreen.main.bounds.height
-        let screenAspect = screenWidth / screenHeight
-        
-        // Video aspect ratio (after rotation to portrait)
-        let videoAspect = videoWidth / videoHeight
-        
-        var x = point.x
-        var y = 1.0 - point.y  // Flip Y for screen coordinates
-        
-        if videoAspect > screenAspect {
-            // Video is wider - sides are cropped
-            let visibleWidth = screenAspect / videoAspect
-            let cropAmount = (1.0 - visibleWidth) / 2.0
-            x = (point.x - cropAmount) / visibleWidth
-        } else {
-            // Video is taller - top/bottom are cropped
-            let visibleHeight = videoAspect / screenAspect
-            let cropAmount = (1.0 - visibleHeight) / 2.0
-            y = ((1.0 - point.y) - cropAmount) / visibleHeight
-        }
-        
-        return CGPoint(x: x, y: y)
     }
     
     /// Calculate the center point between hips for tracking

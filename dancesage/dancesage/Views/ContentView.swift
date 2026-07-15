@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 struct ContentView: View {
     // MediaPipe for single person (Styling mode)
@@ -9,6 +10,11 @@ struct ContentView: View {
     @State private var showCamera = false
     @State private var showPlayback = false
     @State private var selectedMode: LandingView.DanceMode = .styling
+    @State private var cameraPosition: AVCaptureDevice.Position = .back
+    @State private var recordingRequested = false
+    @State private var captureActive = false
+    @State private var capturedVideoURL: URL?
+    @State private var captureError = ""
     
     // Use Vision for Partner mode, MediaPipe for Styling
     private var isPartnerMode: Bool { selectedMode == .partner }
@@ -21,20 +27,22 @@ struct ContentView: View {
     private var currentRecordedFrameTimes: [Double] {
         isPartnerMode ? visionDetector.recordedFrameTimes : poseDetector.recordedFrameTimes
     }
-    private var isRecording: Bool {
-        isPartnerMode ? visionDetector.isRecording : poseDetector.isRecording
-    }
+    private var isRecording: Bool { recordingRequested || captureActive }
     
     var body: some View {
         if showCamera {
             ZStack {
-                if isPartnerMode {
-                    VisionCameraView(visionDetector: visionDetector)
-                        .ignoresSafeArea()
-                } else {
-                    CameraView(poseDetector: poseDetector)
-                        .ignoresSafeArea()
-                }
+                LiveCameraView(
+                    poseDetector: poseDetector,
+                    visionDetector: visionDetector,
+                    isPartnerMode: isPartnerMode,
+                    cameraPosition: cameraPosition,
+                    recordingRequested: recordingRequested,
+                    onRecordingStarted: recordingStarted,
+                    onRecordingFinished: recordingFinished,
+                    onError: { captureError = $0 }
+                )
+                .ignoresSafeArea()
                 
                 SkeletonOverlay(keypoints: currentKeypoints, useVisionIndices: isPartnerMode)
                     .ignoresSafeArea()
@@ -43,7 +51,9 @@ struct ContentView: View {
                     // Back button and mode indicator at top
                     HStack {
                         Button(action: {
+                            recordingRequested = false
                             showCamera = false
+                            removeTemporaryVideo()
                             poseDetector.clearRecording()
                             visionDetector.clearRecording()
                         }) {
@@ -52,8 +62,18 @@ struct ContentView: View {
                                 .foregroundColor(.white)
                                 .padding()
                         }
+                        .disabled(isRecording)
                         
                         Spacer()
+
+                        Button(action: switchCamera) {
+                            Image(systemName: "arrow.triangle.2.circlepath.camera.fill")
+                                .font(.system(size: 34))
+                                .foregroundColor(.white)
+                                .padding(10)
+                                .background(.black.opacity(0.45), in: Circle())
+                        }
+                        .disabled(isRecording)
                         
                         // Mode indicator
                         Text(selectedMode == .styling ? "STYLING MODE" : "PARTNER MODE")
@@ -71,7 +91,7 @@ struct ContentView: View {
                     // Recording controls at bottom
                     HStack(spacing: 30) {
                         // View Recording button
-                        if !currentRecordedKeypoints.isEmpty && !isRecording {
+                        if capturedVideoURL != nil && !currentRecordedKeypoints.isEmpty && !isRecording {
                             Button(action: {
                                 showPlayback = true
                             }) {
@@ -83,24 +103,17 @@ struct ContentView: View {
                         
                         // Record button
                         Button(action: {
-                            if isPartnerMode {
-                                if visionDetector.isRecording {
-                                    visionDetector.stopRecording()
-                                } else {
-                                    visionDetector.startRecording()
-                                }
+                            if recordingRequested {
+                                recordingRequested = false
                             } else {
-                                if poseDetector.isRecording {
-                                    poseDetector.stopRecording()
-                                } else {
-                                    poseDetector.startRecording()
-                                }
+                                beginRecording()
                             }
                         }) {
                             Image(systemName: isRecording ? "stop.circle.fill" : "record.circle")
                                 .font(.system(size: 70))
                                 .foregroundColor(isRecording ? .red : .white)
                         }
+                        .disabled(captureActive && !recordingRequested)
                     }
                     .padding(.bottom, 50)
                 }
@@ -124,8 +137,18 @@ struct ContentView: View {
                     useVisionIndices: isPartnerMode,
                     fps: 20,
                     frameTimes: currentRecordedFrameTimes,
-                    recordingMode: isPartnerMode ? .partner : .styling
+                    recordingMode: isPartnerMode ? .partner : .styling,
+                    videoURL: capturedVideoURL,
+                    cameraPosition: cameraPosition == .front ? "front" : "back"
                 )
+            }
+            .alert("Camera Error", isPresented: Binding(
+                get: { !captureError.isEmpty },
+                set: { if !$0 { captureError = "" } }
+            )) {
+                Button("OK", role: .cancel) { captureError = "" }
+            } message: {
+                Text(captureError)
             }
         } else {
             LandingView(showCamera: $showCamera, selectedMode: $selectedMode)
@@ -134,5 +157,44 @@ struct ContentView: View {
     
     func loadAllRecordings() -> [DanceRecording] {
         (try? RecordingStore.shared.load()) ?? []
+    }
+
+    private func beginRecording() {
+        removeTemporaryVideo()
+        poseDetector.clearRecording()
+        visionDetector.clearRecording()
+        recordingRequested = true
+    }
+
+    private func recordingStarted() {
+        captureActive = true
+        if isPartnerMode {
+            visionDetector.startRecording()
+        } else {
+            poseDetector.startRecording()
+        }
+    }
+
+    private func recordingFinished(_ url: URL) {
+        recordingRequested = false
+        captureActive = false
+        if isPartnerMode {
+            visionDetector.stopRecording()
+        } else {
+            poseDetector.stopRecording()
+        }
+        capturedVideoURL = url
+    }
+
+    private func switchCamera() {
+        removeTemporaryVideo()
+        poseDetector.clearRecording()
+        visionDetector.clearRecording()
+        cameraPosition = cameraPosition == .back ? .front : .back
+    }
+
+    private func removeTemporaryVideo() {
+        if let capturedVideoURL { try? FileManager.default.removeItem(at: capturedVideoURL) }
+        capturedVideoURL = nil
     }
 }

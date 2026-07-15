@@ -3,6 +3,7 @@ import SwiftUI
 struct SkeletonOverlay: View {
     let keypoints: [[CGPoint]]
     var useVisionIndices: Bool = false  // kept for compatibility, not used in styling mode
+    var videoAspect: CGFloat = 9.0 / 16.0
     
     private let personColors: [Color] = [.green, .red]
     
@@ -106,10 +107,7 @@ struct SkeletonOverlay: View {
                         let point = personKeypoints[index]
                         guard point.x >= 0 && point.y >= 0 else { continue }
                         
-                        let scaled = CGPoint(
-                            x: point.x * size.width,
-                            y: point.y * size.height
-                        )
+                        let scaled = scaledPoint(point, in: size)
                         
                         // Larger circles for key joints, smaller for hand/foot detail
                         let radius: CGFloat = [11, 12, 23, 24].contains(index) ? 10 :
@@ -145,8 +143,8 @@ struct SkeletonOverlay: View {
             guard startKp.x >= 0 && startKp.y >= 0,
                   endKp.x >= 0 && endKp.y >= 0 else { continue }
             
-            let startPoint = CGPoint(x: startKp.x * size.width, y: startKp.y * size.height)
-            let endPoint   = CGPoint(x: endKp.x * size.width,   y: endKp.y * size.height)
+            let startPoint = scaledPoint(startKp, in: size)
+            let endPoint = scaledPoint(endKp, in: size)
             
             // Thinner lines for hand and foot detail
             let isDetail = [17, 18, 19, 20, 21, 22, 29, 30, 31, 32].contains(startIdx) ||
@@ -159,5 +157,22 @@ struct SkeletonOverlay: View {
             
             context.stroke(path, with: .color(color), lineWidth: lineWidth)
         }
+    }
+
+    private func scaledPoint(_ point: CGPoint, in size: CGSize) -> CGPoint {
+        let viewAspect = size.width / max(size.height, 1)
+        var normalized = point
+
+        if videoAspect > viewAspect {
+            let visibleWidth = viewAspect / videoAspect
+            let crop = (1 - visibleWidth) / 2
+            normalized.x = (point.x - crop) / visibleWidth
+        } else if videoAspect < viewAspect {
+            let visibleHeight = videoAspect / viewAspect
+            let crop = (1 - visibleHeight) / 2
+            normalized.y = (point.y - crop) / visibleHeight
+        }
+
+        return CGPoint(x: normalized.x * size.width, y: normalized.y * size.height)
     }
 }

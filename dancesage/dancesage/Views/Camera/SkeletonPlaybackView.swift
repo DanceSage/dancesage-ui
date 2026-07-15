@@ -2,6 +2,34 @@ import SwiftUI
 import Combine
 import AVFoundation
 
+private enum PlaybackDisplayMode: String, CaseIterable, Identifiable {
+    case video = "Video"
+    case skeleton = "Skeleton"
+    case both = "Both"
+
+    var id: Self { self }
+}
+
+private struct VideoSurface: UIViewRepresentable {
+    let player: AVPlayer
+
+    func makeUIView(context: Context) -> PlayerView {
+        let view = PlayerView()
+        view.playerLayer.videoGravity = .resizeAspectFill
+        view.playerLayer.player = player
+        return view
+    }
+
+    func updateUIView(_ view: PlayerView, context: Context) {
+        view.playerLayer.player = player
+    }
+
+    final class PlayerView: UIView {
+        override class var layerClass: AnyClass { AVPlayerLayer.self }
+        var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+    }
+}
+
 struct SkeletonPlaybackView: View {
     let keypoints: [[[CGPoint]]]
     let allowSave: Bool  // New parameter to control if save button shows
@@ -11,7 +39,8 @@ struct SkeletonPlaybackView: View {
     var fps: Double = 15
     var frameTimes: [Double] = []
     var recordingMode: DanceRecording.Mode = .styling
-    var videoURL: URL? = nil  // Optional video URL for audio playback
+    var videoURL: URL? = nil
+    var cameraPosition: String? = nil
     
     @State private var currentFrame = 0
     @State private var isPlaying = false
@@ -23,6 +52,8 @@ struct SkeletonPlaybackView: View {
     @State private var saveError = ""
     @State private var saveResultMessage = ""
     @State private var isSaving = false
+    @State private var displayMode: PlaybackDisplayMode = .both
+    @State private var videoAspect: CGFloat = 9.0 / 16.0
     @Environment(\.dismiss) var dismiss
     let timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
 
@@ -65,9 +96,19 @@ struct SkeletonPlaybackView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            
-            if !keypoints.isEmpty && currentFrame < keypoints.count {
-                SkeletonOverlay(keypoints: keypoints[currentFrame], useVisionIndices: useVisionIndices)
+
+            if displayMode != .skeleton, let audioPlayer {
+                VideoSurface(player: audioPlayer)
+                    .ignoresSafeArea()
+            }
+
+            if displayMode != .video, !keypoints.isEmpty, currentFrame < keypoints.count {
+                SkeletonOverlay(
+                    keypoints: keypoints[currentFrame],
+                    useVisionIndices: useVisionIndices,
+                    videoAspect: videoAspect
+                )
+                .ignoresSafeArea()
             }
             
             // Top bar: X button (left), Save button (right)
@@ -96,6 +137,16 @@ struct SkeletonPlaybackView: View {
                         }
                         .disabled(isSaving)
                     }
+                }
+
+                if videoURL != nil {
+                    Picker("Display", selection: $displayMode) {
+                        ForEach(PlaybackDisplayMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 70)
                 }
                 
                 Spacer()
@@ -199,6 +250,8 @@ struct SkeletonPlaybackView: View {
         }
         .onAppear {
             setupAudioPlayer()
+            loadVideoAspect()
+            if videoURL == nil { displayMode = .skeleton }
         }
         .onDisappear {
             audioPlayer?.pause()
@@ -251,13 +304,15 @@ struct SkeletonPlaybackView: View {
             fps: effectiveFPS,
             frameTimes: effectiveFrameTimes,
             beats: beats,
-            bpm: bpm
+            bpm: bpm,
+            hasVideo: videoURL != nil,
+            cameraPosition: cameraPosition
         )
         
         // Save locally
         do {
             isSaving = true
-            try RecordingStore.shared.append(recording)
+            try RecordingStore.shared.append(recording, videoSourceURL: videoURL)
             print("✅ Saved recording locally: \(recordingName)")
         } catch {
             isSaving = false
@@ -270,11 +325,10 @@ struct SkeletonPlaybackView: View {
         recordingName = ""
     }
     
-    // MARK: - Audio Playback
+    // MARK: - Video Playback
     
     func setupAudioPlayer() {
         guard let url = videoURL else {
-            print("⚠️ No video URL for audio playback")
             return
         }
         
@@ -289,7 +343,22 @@ struct SkeletonPlaybackView: View {
         
         audioPlayer = AVPlayer(url: url)
         audioPlayer?.volume = 1.0
-        print("🔊 Audio player ready for: \(url.lastPathComponent)")
+        print("🎬 Video player ready for: \(url.lastPathComponent)")
+    }
+
+    func loadVideoAspect() {
+        guard let videoURL else { return }
+        Task {
+            let asset = AVURLAsset(url: videoURL)
+            guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+                  let size = try? await track.load(.naturalSize),
+                  let transform = try? await track.load(.preferredTransform) else { return }
+            let transformed = size.applying(transform)
+            let width = abs(transformed.width)
+            let height = abs(transformed.height)
+            guard width > 0, height > 0 else { return }
+            await MainActor.run { videoAspect = width / height }
+        }
     }
     
     func togglePlayback() {

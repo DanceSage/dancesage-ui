@@ -30,6 +30,8 @@ struct RecordingsListView: View {
                                     Text(recording.name)
                                         .font(.headline)
                                     HStack {
+                                        Image(systemName: recording.hasVideo == true ? "video.fill" : "figure.walk")
+                                            .foregroundColor(recording.hasVideo == true ? .blue : .secondary)
                                         Text("\(recording.frameCount) frames")
                                             .font(.caption)
                                             .foregroundColor(.gray)
@@ -66,7 +68,9 @@ struct RecordingsListView: View {
                         bpm: recording.bpm ?? 0,
                         fps: recording.effectiveFPS,
                         frameTimes: recording.effectiveFrameTimes,
-                        recordingMode: recording.mode ?? .styling
+                        recordingMode: recording.mode ?? .styling,
+                        videoURL: recording.hasVideo == true ? RecordingStore.shared.videoURL(for: recording) : nil,
+                        cameraPosition: recording.cameraPosition
                     )
                 }
             }

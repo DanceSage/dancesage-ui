@@ -16,6 +16,8 @@ struct DanceRecording: Codable, Identifiable {
     let frameTimes: [Double]?
     let beats: [Double]?
     let bpm: Double?
+    let hasVideo: Bool?
+    let cameraPosition: String?
     
     init(
         name: String,
@@ -24,7 +26,9 @@ struct DanceRecording: Codable, Identifiable {
         fps: Double = 15,
         frameTimes: [Double] = [],
         beats: [Double] = [],
-        bpm: Double = 0
+        bpm: Double = 0,
+        hasVideo: Bool = false,
+        cameraPosition: String? = nil
     ) {
         self.id = UUID().uuidString
         self.name = name
@@ -36,6 +40,8 @@ struct DanceRecording: Codable, Identifiable {
         self.frameTimes = frameTimes.count == keypoints.count ? frameTimes : nil
         self.beats = beats.isEmpty ? nil : beats
         self.bpm = bpm > 0 ? bpm : nil
+        self.hasVideo = hasVideo
+        self.cameraPosition = cameraPosition
     }
 
     var effectiveFPS: Double { max(fps ?? 15, 1) }
@@ -43,6 +49,8 @@ struct DanceRecording: Codable, Identifiable {
         if let frameTimes, frameTimes.count == keypoints.count { return frameTimes }
         return keypoints.indices.map { Double($0) / effectiveFPS }
     }
+
+    var videoFilename: String { "\(id).mov" }
 }
 
 // Make CGPoint Codable
