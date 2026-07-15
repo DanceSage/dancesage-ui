@@ -81,7 +81,7 @@ struct LandingView: View {
         .sheet(isPresented: $showVideoPicker) {
             VideoPicker(selectedVideoURL: $selectedVideoURL, errorMessage: $videoImportError)
         }
-        .sheet(isPresented: $showVideoProcessing, onDismiss: cleanupSelectedVideo) {
+        .fullScreenCover(isPresented: $showVideoProcessing, onDismiss: cleanupSelectedVideo) {
             if let url = selectedVideoURL {
                 VideoProcessingView(videoURL: url, isPartnerMode: videoMode == .partner)
             }

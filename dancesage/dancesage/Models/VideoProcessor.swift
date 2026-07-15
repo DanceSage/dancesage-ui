@@ -13,6 +13,7 @@ class VideoProcessor: ObservableObject {
     
     private var poseLandmarker: PoseLandmarker?  // MediaPipe — styling only
     private var isPartnerMode: Bool = false
+    private let processingQueue = DispatchQueue(label: "com.dancesage.video-processing", qos: .userInitiated)
     
     // Apple Vision joint order — 17 points — partner mode
     private let jointOrder: [VNHumanBodyPoseObservation.JointName] = [
@@ -62,29 +63,24 @@ class VideoProcessor: ObservableObject {
         progress = 0.0
         
         let asset = AVURLAsset(url: url)
-        
-        Task {
-            do {
-                guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
-                    print("❌ No video track found")
-                    await MainActor.run { self.isProcessing = false }
-                    return
-                }
-                
-                let frameRate = try await videoTrack.load(.nominalFrameRate)
-                let duration = try await asset.load(.duration).seconds
-                
-                print("🎬 Duration: \(String(format: "%.1f", duration))s at \(String(format: "%.0f", frameRate))fps")
-                
-                await extractAndProcess(from: asset, frameRate: frameRate, duration: duration)
-            } catch {
-                print("❌ Error loading video: \(error)")
-                await MainActor.run { self.isProcessing = false }
+        let partnerMode = isPartnerMode
+
+        processingQueue.async { [weak self] in
+            guard let self else { return }
+            let duration = asset.duration.seconds
+            guard duration.isFinite, duration > 0,
+                  let videoTrack = asset.tracks(withMediaType: .video).first else {
+                DispatchQueue.main.async { self.isProcessing = false }
+                return
             }
+
+            let frameRate = videoTrack.nominalFrameRate
+            print("🎬 Duration: \(String(format: "%.1f", duration))s at \(String(format: "%.0f", frameRate))fps")
+            self.extractAndProcess(from: asset, duration: duration, partnerMode: partnerMode)
         }
     }
     
-    private func extractAndProcess(from asset: AVAsset, frameRate: Float, duration: Double) async {
+    private func extractAndProcess(from asset: AVAsset, duration: Double, partnerMode: Bool) {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.requestedTimeToleranceBefore = CMTime(value: 1, timescale: 30)
@@ -93,8 +89,6 @@ class VideoProcessor: ObservableObject {
         let targetFPS: Double = 15
         let frameInterval = 1.0 / targetFPS
         var currentTime = 0.0
-        var allKeypoints: [[[CGPoint]]] = []
-        var allFrameTimes: [Double] = []
         var frameCount = 0
         var detectedCount = 0
         
@@ -102,17 +96,23 @@ class VideoProcessor: ObservableObject {
             let time = CMTime(seconds: currentTime, preferredTimescale: 600)
             
             do {
-                let (cgImage, _) = try await generator.image(at: time)
+                let cgImage = try generator.copyCGImage(at: time, actualTime: nil)
                 frameCount += 1
                 
-                let poses = isPartnerMode
+                let poses = partnerMode
                     ? detectPoseVision(in: cgImage)
                     : detectPoseMediaPipe(in: cgImage)
-                
-                allKeypoints.append(poses ?? [])
-                allFrameTimes.append(currentTime)
+
                 if poses != nil {
                     detectedCount += 1
+                }
+
+                let framePoses = poses ?? []
+                let frameTime = currentTime
+                DispatchQueue.main.async {
+                    self.keypoints.append(framePoses)
+                    self.frameTimes.append(frameTime)
+                    self.progress = min(frameTime / duration, 1.0)
                 }
                 
                 if frameCount % 30 == 0 {
@@ -124,15 +124,10 @@ class VideoProcessor: ObservableObject {
             }
             
             currentTime += frameInterval
-            
-            await MainActor.run {
-                self.progress = min(currentTime / duration, 1.0)
-            }
         }
-        
-        await MainActor.run {
-            self.keypoints = allKeypoints
-            self.frameTimes = allFrameTimes
+
+        DispatchQueue.main.async {
+            self.progress = 1
             self.isProcessing = false
             print("✅ Done — \(frameCount) frames, \(detectedCount) with poses")
         }

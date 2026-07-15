@@ -41,6 +41,8 @@ struct SkeletonPlaybackView: View {
     var recordingMode: DanceRecording.Mode = .styling
     var videoURL: URL? = nil
     var cameraPosition: String? = nil
+    var isProcessing: Bool = false
+    var processingProgress: Double = 1
     
     @State private var currentFrame = 0
     @State private var isPlaying = false
@@ -54,6 +56,8 @@ struct SkeletonPlaybackView: View {
     @State private var isSaving = false
     @State private var displayMode: PlaybackDisplayMode = .both
     @State private var videoAspect: CGFloat = 9.0 / 16.0
+    @State private var videoDuration: Double = 0
+    @State private var playbackTime: Double = 0
     @Environment(\.dismiss) var dismiss
     let timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
 
@@ -65,7 +69,8 @@ struct SkeletonPlaybackView: View {
     }
 
     private var duration: Double {
-        (effectiveFrameTimes.last ?? 0) + (1 / effectiveFPS)
+        if videoDuration > 0 { return videoDuration }
+        return (effectiveFrameTimes.last ?? 0) + (1 / effectiveFPS)
     }
 
     private var chromeColor: Color {
@@ -74,8 +79,15 @@ struct SkeletonPlaybackView: View {
     
     // Calculate current time from frame number
     var currentTime: Double {
+        if videoURL != nil { return playbackTime }
         guard effectiveFrameTimes.indices.contains(currentFrame) else { return 0 }
         return effectiveFrameTimes[currentFrame]
+    }
+
+    private var skeletonIsAvailable: Bool {
+        guard !keypoints.isEmpty, currentFrame < keypoints.count else { return false }
+        guard isProcessing, let latestTime = effectiveFrameTimes.last else { return true }
+        return playbackTime <= latestTime + 0.2
     }
     
     // Find which beat we're on (1-8 in the salsa count)
@@ -107,13 +119,25 @@ struct SkeletonPlaybackView: View {
                     .ignoresSafeArea()
             }
 
-            if displayMode != .video, !keypoints.isEmpty, currentFrame < keypoints.count {
+            if displayMode != .video, skeletonIsAvailable {
                 SkeletonOverlay(
                     keypoints: keypoints[currentFrame],
                     useVisionIndices: useVisionIndices,
                     videoAspect: videoAspect
                 )
                 .ignoresSafeArea()
+            }
+
+            if displayMode != .video, isProcessing, !skeletonIsAvailable {
+                Text("Skeleton buffering…")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(chromeColor)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .background(
+                        displayMode == .skeleton ? Color.white.opacity(0.9) : Color.black.opacity(0.72),
+                        in: Capsule()
+                    )
             }
             
             // Top bar: X button (left), Save button (right)
@@ -140,7 +164,7 @@ struct SkeletonPlaybackView: View {
                                 .foregroundColor(.blue)
                                 .padding()
                         }
-                        .disabled(isSaving)
+                        .disabled(isSaving || isProcessing)
                     }
                 }
 
@@ -167,6 +191,18 @@ struct SkeletonPlaybackView: View {
                         }
                     }
                     .padding(.horizontal, 48)
+                }
+
+                if isProcessing {
+                    VStack(spacing: 5) {
+                        ProgressView(value: processingProgress)
+                            .tint(.blue)
+                        Text("Processing skeleton \(Int(processingProgress * 100))%")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(chromeColor)
+                    }
+                    .padding(.horizontal, 48)
+                    .padding(.top, 8)
                 }
                 
                 Spacer()
@@ -377,12 +413,17 @@ struct SkeletonPlaybackView: View {
             let width = abs(transformed.width)
             let height = abs(transformed.height)
             guard width > 0, height > 0 else { return }
-            await MainActor.run { videoAspect = width / height }
+            let loadedDuration = try? await asset.load(.duration)
+            let duration = loadedDuration?.seconds
+            await MainActor.run {
+                videoAspect = width / height
+                if let duration, duration.isFinite { videoDuration = duration }
+            }
         }
     }
     
     func togglePlayback() {
-        guard !keypoints.isEmpty else { return }
+        guard videoURL != nil || !keypoints.isEmpty else { return }
         isPlaying.toggle()
         
         if isPlaying {
@@ -400,7 +441,7 @@ struct SkeletonPlaybackView: View {
     }
 
     func updatePlaybackPosition() {
-        guard isPlaying, !keypoints.isEmpty else { return }
+        guard isPlaying else { return }
 
         let elapsed: Double
         if let audioPlayer, audioPlayer.timeControlStatus == .playing {
@@ -411,12 +452,16 @@ struct SkeletonPlaybackView: View {
             return
         }
 
-        guard elapsed.isFinite, elapsed < duration else {
+        guard elapsed.isFinite else { return }
+        if duration > 0, elapsed >= duration {
             resetPlayback()
             return
         }
 
-        currentFrame = effectiveFrameTimes.lastIndex(where: { $0 <= elapsed }) ?? 0
+        playbackTime = elapsed
+        if !effectiveFrameTimes.isEmpty {
+            currentFrame = effectiveFrameTimes.lastIndex(where: { $0 <= elapsed }) ?? 0
+        }
     }
     
     func resetPlayback() {
@@ -424,6 +469,7 @@ struct SkeletonPlaybackView: View {
         currentFrame = 0
         playbackStartedAt = nil
         playbackStartTime = 0
+        playbackTime = 0
         audioPlayer?.pause()
         audioPlayer?.seek(to: .zero)
     }
