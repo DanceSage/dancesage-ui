@@ -85,10 +85,9 @@ struct VideoProcessingView: View {
         }
         .padding()
         .onAppear {
-            // Run both in parallel
+            videoProcessor.setPartnerMode(isPartnerMode)  // ADD THIS LINE
             videoProcessor.processVideo(url: videoURL)
             beatDetector.detectBeats(from: videoURL) { beats, bpm in
-                // Beats detected - check Xcode console for details
                 print("🎵 BEATS: \(beats.prefix(8).map { String(format: "%.2f", $0) })")
             }
         }

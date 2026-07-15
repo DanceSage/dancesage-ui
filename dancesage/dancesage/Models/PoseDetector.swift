@@ -9,14 +9,13 @@ class PoseDetector: NSObject, ObservableObject {
     @Published var isRecording = false
     
     private var poseLandmarker: PoseLandmarker?
-    private var currentNumPoses: Int = 1  // Default to single person
+    private var currentNumPoses: Int = 1
     
     override init() {
         super.init()
         setupPoseLandmarker(numPoses: 1)
     }
     
-    // Add method to switch between modes
     func setMode(numPoses: Int) {
         guard numPoses != currentNumPoses else { return }
         currentNumPoses = numPoses
@@ -25,9 +24,7 @@ class PoseDetector: NSObject, ObservableObject {
     }
     
     private func setupPoseLandmarker(numPoses: Int) {
-        let modelPath = Bundle.main.path(forResource: "pose_landmarker_heavy", ofType: "task")
-        
-        guard let modelPath = modelPath else {
+        guard let modelPath = Bundle.main.path(forResource: "pose_landmarker_heavy", ofType: "task") else {
             print("❌ Model file not found")
             return
         }
@@ -35,7 +32,7 @@ class PoseDetector: NSObject, ObservableObject {
         let options = PoseLandmarkerOptions()
         options.baseOptions.modelAssetPath = modelPath
         options.runningMode = .liveStream
-        options.numPoses = numPoses  // Use the parameter
+        options.numPoses = numPoses
         options.minPoseDetectionConfidence = 0.1
         options.minPosePresenceConfidence = 0.1
         options.minTrackingConfidence = 0.1
@@ -51,12 +48,10 @@ class PoseDetector: NSObject, ObservableObject {
     
     func detectAsync(image: UIImage, timestamp: Int) {
         guard let poseLandmarker = poseLandmarker else { return }
-        
         guard let mpImage = try? MPImage(uiImage: image) else {
             print("❌ Failed to convert UIImage to MPImage")
             return
         }
-        
         do {
             try poseLandmarker.detectAsync(image: mpImage, timestampInMilliseconds: timestamp)
         } catch {
@@ -64,7 +59,6 @@ class PoseDetector: NSObject, ObservableObject {
         }
     }
     
-    // Recording controls
     func startRecording() {
         recordedKeypoints = []
         isRecording = true
@@ -85,32 +79,28 @@ class PoseDetector: NSObject, ObservableObject {
 // MARK: - PoseLandmarkerLiveStreamDelegate
 extension PoseDetector: PoseLandmarkerLiveStreamDelegate {
     
-    // Map MediaPipe 33 landmarks to Vision-compatible 17 landmarks
-    // MediaPipe indices -> Vision-style indices
-    private static let landmarkMapping: [Int] = [
-        0,   // nose -> 0
-        2,   // left eye -> 1
-        5,   // right eye -> 2
-        7,   // left ear -> 3
-        8,   // right ear -> 4
-        11,  // left shoulder -> 5
-        12,  // right shoulder -> 6
-        13,  // left elbow -> 7
-        14,  // right elbow -> 8
-        15,  // left wrist -> 9
-        16,  // right wrist -> 10
-        23,  // left hip -> 11
-        24,  // right hip -> 12
-        25,  // left knee -> 13
-        26,  // right knee -> 14
-        27,  // left ankle -> 15
-        28,  // right ankle -> 16
-    ]
+    // Full 33 MediaPipe landmarks:
+    // 0: nose
+    // 1: left eye inner, 2: left eye, 3: left eye outer
+    // 4: right eye inner, 5: right eye, 6: right eye outer
+    // 7: left ear, 8: right ear
+    // 9: mouth left, 10: mouth right
+    // 11: left shoulder, 12: right shoulder
+    // 13: left elbow, 14: right elbow
+    // 15: left wrist, 16: right wrist
+    // 17: left pinky, 18: right pinky
+    // 19: left index, 20: right index
+    // 21: left thumb, 22: right thumb
+    // 23: left hip, 24: right hip
+    // 25: left knee, 26: right knee
+    // 27: left ankle, 28: right ankle
+    // 29: left heel, 30: right heel
+    // 31: left foot index, 32: right foot index
     
     func poseLandmarker(_ poseLandmarker: PoseLandmarker,
-                       didFinishDetection result: PoseLandmarkerResult?,
-                       timestampInMilliseconds: Int,
-                       error: Error?) {
+                        didFinishDetection result: PoseLandmarkerResult?,
+                        timestampInMilliseconds: Int,
+                        error: Error?) {
         
         if let error = error {
             print("❌ Detection error: \(error)")
@@ -118,39 +108,24 @@ extension PoseDetector: PoseLandmarkerLiveStreamDelegate {
         }
         
         guard let result = result else {
-            DispatchQueue.main.async {
-                self.keypoints = []
-            }
+            DispatchQueue.main.async { self.keypoints = [] }
             return
         }
         
-        // Extract poses with only 17 key landmarks (matching Vision)
+        // Use ALL 33 landmarks — no mapping, no dropping
         var allPoses: [[CGPoint]] = []
         
         for pose in result.landmarks {
-            // Extract only the 17 landmarks that match Vision
-            var points: [CGPoint] = []
-            for mpIndex in PoseDetector.landmarkMapping {
-                if mpIndex < pose.count {
-                    let landmark = pose[mpIndex]
-                    points.append(CGPoint(x: CGFloat(landmark.x), y: CGFloat(landmark.y)))
-                } else {
-                    points.append(CGPoint(x: -1, y: -1))
-                }
+            let points: [CGPoint] = pose.map { landmark in
+                CGPoint(x: CGFloat(landmark.x), y: CGFloat(landmark.y))
             }
             allPoses.append(points)
         }
         
         DispatchQueue.main.async {
             self.keypoints = allPoses
-            
             if self.isRecording {
                 self.recordedKeypoints.append(allPoses)
-                // Send frame to backend immediately
-                let frameIndex = self.recordedKeypoints.count - 1
-                Task {
-                    await APIService.shared.uploadFrame(allPoses, frameIndex: frameIndex)
-                }
             }
         }
     }

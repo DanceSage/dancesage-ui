@@ -3,14 +3,17 @@ import AVFoundation
 import Vision
 import UIKit
 import Combine
+import MediaPipeTasksVision
 
-/// Video processor using Apple Vision for reliable pose detection
 class VideoProcessor: ObservableObject {
     @Published var keypoints: [[[CGPoint]]] = []
     @Published var isProcessing = false
     @Published var progress: Double = 0.0
     
-    // 17-point format matching VisionPoseDetector
+    private var poseLandmarker: PoseLandmarker?  // MediaPipe — styling only
+    private var isPartnerMode: Bool = false
+    
+    // Apple Vision joint order — 17 points — partner mode
     private let jointOrder: [VNHumanBodyPoseObservation.JointName] = [
         .nose, .leftEye, .rightEye, .leftEar, .rightEar,
         .leftShoulder, .rightShoulder, .leftElbow, .rightElbow,
@@ -18,9 +21,40 @@ class VideoProcessor: ObservableObject {
         .leftKnee, .rightKnee, .leftAnkle, .rightAnkle
     ]
     
+    init() {
+        setupMediaPipe()
+    }
+    
+    func setPartnerMode(_ enabled: Bool) {
+        isPartnerMode = enabled
+    }
+    
+    private func setupMediaPipe() {
+        guard let modelPath = Bundle.main.path(forResource: "pose_landmarker_heavy", ofType: "task") else {
+            print("❌ Model file not found")
+            return
+        }
+        
+        let options = PoseLandmarkerOptions()
+        options.baseOptions.modelAssetPath = modelPath
+        options.runningMode = .image
+        options.numPoses = 1
+        options.minPoseDetectionConfidence = 0.3
+        options.minPosePresenceConfidence = 0.3
+        options.minTrackingConfidence = 0.3
+        
+        do {
+            poseLandmarker = try PoseLandmarker(options: options)
+            print("✅ VideoProcessor MediaPipe initialized")
+        } catch {
+            print("❌ Error creating PoseLandmarker: \(error)")
+        }
+    }
+    
     func processVideo(url: URL) {
-        print("🎬 STARTING VIDEO PROCESSING (Apple Vision)")
-
+        let mode = isPartnerMode ? "Apple Vision (Partner)" : "MediaPipe 33pt (Styling)"
+        print("🎬 STARTING VIDEO PROCESSING — \(mode)")
+        
         isProcessing = true
         keypoints = []
         progress = 0.0
@@ -38,10 +72,9 @@ class VideoProcessor: ObservableObject {
                 let frameRate = try await videoTrack.load(.nominalFrameRate)
                 let duration = try await asset.load(.duration).seconds
                 
-                print("🎬 Video duration: \(duration) seconds, frame rate: \(frameRate) fps")
-                print("🎬 Expected frames: ~\(Int(duration * Double(frameRate)))")
+                print("🎬 Duration: \(String(format: "%.1f", duration))s at \(String(format: "%.0f", frameRate))fps")
                 
-                await extractFrames(from: asset, frameRate: frameRate, duration: duration)
+                await extractAndProcess(from: asset, frameRate: frameRate, duration: duration)
             } catch {
                 print("❌ Error loading video: \(error)")
                 await MainActor.run { self.isProcessing = false }
@@ -49,15 +82,14 @@ class VideoProcessor: ObservableObject {
         }
     }
     
-    private func extractFrames(from asset: AVAsset, frameRate: Float, duration: Double) async {
+    private func extractAndProcess(from asset: AVAsset, frameRate: Float, duration: Double) async {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
-        generator.requestedTimeToleranceBefore = .zero
-        generator.requestedTimeToleranceAfter = .zero
+        generator.requestedTimeToleranceBefore = CMTime(value: 1, timescale: 30)
+        generator.requestedTimeToleranceAfter  = CMTime(value: 1, timescale: 30)
         
-        // Process at ~15fps for speed (skip frames if video is higher fps)
         let targetFPS: Double = 15
-        let frameInterval = max(1.0 / Double(frameRate), 1.0 / targetFPS)
+        let frameInterval = 1.0 / targetFPS
         var currentTime = 0.0
         var allKeypoints: [[[CGPoint]]] = []
         var frameCount = 0
@@ -70,17 +102,21 @@ class VideoProcessor: ObservableObject {
                 let (cgImage, _) = try await generator.image(at: time)
                 frameCount += 1
                 
-                if let frameKeypoints = detectPose(in: cgImage) {
-                    allKeypoints.append(frameKeypoints)
+                let poses = isPartnerMode
+                    ? detectPoseVision(in: cgImage)
+                    : detectPoseMediaPipe(in: cgImage)
+                
+                if let poses = poses {
+                    allKeypoints.append(poses)
                     detectedCount += 1
                 }
                 
                 if frameCount % 30 == 0 {
-                    print("🍎 Frame \(frameCount): detected \(detectedCount) poses so far")
+                    print("🎬 Frame \(frameCount): \(detectedCount) poses so far")
                 }
                 
             } catch {
-                print("❌ Frame extraction error at \(currentTime)s: \(error)")
+                print("⚠️ Frame at \(String(format: "%.2f", currentTime))s skipped")
             }
             
             currentTime += frameInterval
@@ -93,55 +129,60 @@ class VideoProcessor: ObservableObject {
         await MainActor.run {
             self.keypoints = allKeypoints
             self.isProcessing = false
-            print("✅ Processed \(frameCount) frames, detected poses in \(allKeypoints.count) frames")
+            print("✅ Done — \(frameCount) frames, \(detectedCount) with poses")
         }
     }
     
-    private func detectPose(in cgImage: CGImage) -> [[CGPoint]]? {
+    // MARK: - MediaPipe — Styling (33 points, single person)
+    private func detectPoseMediaPipe(in cgImage: CGImage) -> [[CGPoint]]? {
+        guard let poseLandmarker = poseLandmarker else { return nil }
+        
+        let uiImage = UIImage(cgImage: cgImage)
+        guard let mpImage = try? MPImage(uiImage: uiImage) else { return nil }
+        
+        do {
+            let result = try poseLandmarker.detect(image: mpImage)
+            guard !result.landmarks.isEmpty else { return nil }
+            
+            return result.landmarks.map { pose in
+                pose.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }
+            }
+        } catch {
+            print("❌ MediaPipe error: \(error)")
+            return nil
+        }
+    }
+    
+    // MARK: - Apple Vision — Partner (17 points, multi-person)
+    private func detectPoseVision(in cgImage: CGImage) -> [[CGPoint]]? {
         let request = VNDetectHumanBodyPoseRequest()
         let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:])
         
         do {
             try handler.perform([request])
             
-            guard let observations = request.results, !observations.isEmpty else {
-                return nil
-            }
+            guard let observations = request.results, !observations.isEmpty else { return nil }
             
-            // Detect ALL people - Vision can detect multiple people per frame
-            var allPeople: [[CGPoint]] = []
-            
-            print("👥 Vision detected \(observations.count) person(s) in this frame")
-            
-            for (index, observation) in observations.enumerated() {
-                var points: [CGPoint] = []
-                
-                for joint in jointOrder {
+            var allPeople: [[CGPoint]] = observations.map { observation in
+                jointOrder.map { joint in
                     if let point = try? observation.recognizedPoint(joint), point.confidence > 0.1 {
-                        // Flip Y for screen coordinates
-                        let screenPoint = CGPoint(x: point.location.x, y: 1.0 - point.location.y)
-                        points.append(screenPoint)
-                    } else {
-                        points.append(CGPoint(x: -1, y: -1))
+                        return CGPoint(x: point.location.x, y: 1.0 - point.location.y)
                     }
+                    return CGPoint(x: -1, y: -1)
                 }
-                
-                allPeople.append(points)
-                let validPoints = points.filter { $0.x >= 0 && $0.y >= 0 }.count
-                print("  Person \(index + 1): \(validPoints)/17 valid keypoints")
             }
             
-            // Sort by X position (leftmost person first) for consistent coloring
-            allPeople.sort { person1, person2 in
-                let hip1 = person1.count > 11 ? person1[11] : CGPoint(x: 0.5, y: 0.5)
-                let hip2 = person2.count > 11 ? person2[11] : CGPoint(x: 0.5, y: 0.5)
-                return hip1.x < hip2.x
+            // Sort by hip X — leftmost person first
+            allPeople.sort { a, b in
+                let hipA = a.count > 11 ? a[11].x : 0.5
+                let hipB = b.count > 11 ? b[11].x : 0.5
+                return hipA < hipB
             }
             
             return allPeople
             
         } catch {
-            print("❌ Vision detection error: \(error)")
+            print("❌ Vision error: \(error)")
             return nil
         }
     }

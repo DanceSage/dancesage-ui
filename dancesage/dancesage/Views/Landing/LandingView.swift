@@ -2,18 +2,18 @@ import SwiftUI
 
 struct LandingView: View {
     @Binding var showCamera: Bool
-    @Binding var selectedMode: DanceMode  // Add this binding
+    @Binding var selectedMode: DanceMode
     @State private var showVideoPicker = false
     @State private var selectedVideoURL: URL?
     @State private var showVideoProcessing = false
     @State private var showRecordings = false
     @State private var showModeSelection = false
-    @State private var showVideoModeSelection = false  // Mode selection for uploaded videos
-    @State private var videoMode: DanceMode = .styling  // Selected mode for video
+    @State private var showVideoModeSelection = false
+    @State private var videoMode: DanceMode = .styling
     
     enum DanceMode {
-        case styling  // Single person
-        case partner  // Two people
+        case styling
+        case partner
     }
     
     var body: some View {
@@ -99,7 +99,6 @@ struct LandingView: View {
         }
         .onChange(of: selectedVideoURL) { oldValue, newValue in
             if newValue != nil {
-                // Video selected, now process it with the chosen mode
                 showVideoProcessing = true
             }
         }
@@ -124,7 +123,7 @@ struct VideoModeSelectionView: View {
             
             Spacer()
             
-            // Styling Mode (Single Person)
+            // Styling Mode
             Button(action: {
                 selectedMode = .styling
                 onModeSelected()
@@ -132,10 +131,8 @@ struct VideoModeSelectionView: View {
                 VStack(spacing: 15) {
                     Image(systemName: "figure.dance")
                         .font(.system(size: 60))
-                    
                     Text("STYLING")
                         .font(.system(size: 24, weight: .semibold))
-                    
                     Text("Solo dancer / Footwork")
                         .font(.system(size: 16))
                         .foregroundColor(.white.opacity(0.8))
@@ -146,40 +143,54 @@ struct VideoModeSelectionView: View {
                 .cornerRadius(20)
             }
             
-            // Partner Mode (Two People)
+            // Partner Mode — experimental warning
             Button(action: {
                 selectedMode = .partner
                 onModeSelected()
             }) {
-                VStack(spacing: 15) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "figure.dance")
-                            .font(.system(size: 50))
-                            .foregroundColor(.green)
-                        Image(systemName: "figure.dance")
-                            .font(.system(size: 50))
-                            .foregroundColor(.red)
+                ZStack(alignment: .topTrailing) {
+                    VStack(spacing: 15) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "figure.dance")
+                                .font(.system(size: 50))
+                                .foregroundColor(.green)
+                            Image(systemName: "figure.dance")
+                                .font(.system(size: 50))
+                                .foregroundColor(.red)
+                        }
+                        Text("PARTNER")
+                            .font(.system(size: 24, weight: .semibold))
+                        Text("Two dancers together")
+                            .font(.system(size: 16))
+                            .foregroundColor(.white.opacity(0.8))
                     }
+                    .foregroundColor(.white)
+                    .frame(width: 280, height: 200)
+                    .background(Color.blue)
+                    .cornerRadius(20)
                     
-                    Text("PARTNER")
-                        .font(.system(size: 24, weight: .semibold))
-                    
-                    Text("Two dancers together")
-                        .font(.system(size: 16))
-                        .foregroundColor(.white.opacity(0.8))
+                    // Experimental badge
+                    Text("EXPERIMENTAL")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.orange)
+                        .cornerRadius(10)
+                        .padding(8)
                 }
-                .foregroundColor(.white)
-                .frame(width: 280, height: 200)
-                .background(Color.blue)
-                .cornerRadius(20)
             }
+            
+            // Partner mode disclaimer
+            Text("⚠️ Partner pose detection is experimental. Skeletons may jump when bodies overlap. Full refinement coming in version 2.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 30)
             
             Spacer()
             
-            // Cancel Button
-            Button(action: {
-                dismiss()
-            }) {
+            Button(action: { dismiss() }) {
                 Text("Cancel")
                     .font(.system(size: 18))
                     .foregroundColor(.red)
@@ -189,7 +200,7 @@ struct VideoModeSelectionView: View {
     }
 }
 
-// MARK: - Mode Selection View (same as before)
+// MARK: - Live Mode Selection View
 struct ModeSelectionView: View {
     @Binding var selectedMode: LandingView.DanceMode
     let onModeSelected: () -> Void
@@ -203,7 +214,7 @@ struct ModeSelectionView: View {
             
             Spacer()
             
-            // Styling Mode (Single Person)
+            // Styling Mode
             Button(action: {
                 selectedMode = .styling
                 onModeSelected()
@@ -211,10 +222,8 @@ struct ModeSelectionView: View {
                 VStack(spacing: 15) {
                     Image(systemName: "figure.dance")
                         .font(.system(size: 60))
-                    
                     Text("STYLING")
                         .font(.system(size: 24, weight: .semibold))
-                    
                     Text("Single dancer")
                         .font(.system(size: 16))
                         .foregroundColor(.gray)
@@ -225,38 +234,51 @@ struct ModeSelectionView: View {
                 .cornerRadius(20)
             }
             
-            // Partner Mode (Two People)
+            // Partner Mode — experimental
             Button(action: {
                 selectedMode = .partner
                 onModeSelected()
             }) {
-                VStack(spacing: 15) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "figure.dance")
-                            .font(.system(size: 50))
-                        Image(systemName: "figure.dance")
-                            .font(.system(size: 50))
+                ZStack(alignment: .topTrailing) {
+                    VStack(spacing: 15) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "figure.dance")
+                                .font(.system(size: 50))
+                            Image(systemName: "figure.dance")
+                                .font(.system(size: 50))
+                        }
+                        Text("PARTNER")
+                            .font(.system(size: 24, weight: .semibold))
+                        Text("Two dancers")
+                            .font(.system(size: 16))
+                            .foregroundColor(.gray)
                     }
+                    .foregroundColor(.white)
+                    .frame(width: 280, height: 200)
+                    .background(Color.blue)
+                    .cornerRadius(20)
                     
-                    Text("PARTNER")
-                        .font(.system(size: 24, weight: .semibold))
-                    
-                    Text("Two dancers")
-                        .font(.system(size: 16))
-                        .foregroundColor(.gray)
+                    // Experimental badge
+                    Text("EXPERIMENTAL")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.orange)
+                        .cornerRadius(10)
+                        .padding(8)
                 }
-                .foregroundColor(.white)
-                .frame(width: 280, height: 200)
-                .background(Color.blue)
-                .cornerRadius(20)
             }
+            
+            Text("⚠️ Partner detection is experimental. Skeletons may jump when bodies overlap.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 30)
             
             Spacer()
             
-            // Cancel Button
-            Button(action: {
-                dismiss()
-            }) {
+            Button(action: { dismiss() }) {
                 Text("Cancel")
                     .font(.system(size: 18))
                     .foregroundColor(.red)

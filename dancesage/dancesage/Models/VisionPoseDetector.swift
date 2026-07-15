@@ -134,9 +134,6 @@ class VisionPoseDetector: ObservableObject {
                 self.recordedKeypoints.append(allPoses)
                 // Send frame to backend immediately
                 let frameIndex = self.recordedKeypoints.count - 1
-                Task {
-                    await APIService.shared.uploadFrame(allPoses, frameIndex: frameIndex)
-                }
             }
         }
         
