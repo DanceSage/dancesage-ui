@@ -6,7 +6,6 @@ private enum PlaybackDisplayMode: String, CaseIterable, Identifiable {
     case video = "Video"
     case skeleton = "Skeleton"
     case both = "Both"
-    case threeD = "3D"
 
     var id: Self { self }
 }
@@ -44,7 +43,6 @@ struct SkeletonPlaybackView: View {
     var cameraPosition: String? = nil
     var isProcessing: Bool = false
     var processingProgress: Double = 1
-    var worldKeypoints: [[[PosePoint3D]]] = []
     
     @State private var currentFrame = 0
     @State private var isPlaying = false
@@ -79,17 +77,6 @@ struct SkeletonPlaybackView: View {
         displayMode == .skeleton ? .black : .white
     }
 
-    private var has3DFrames: Bool {
-        worldKeypoints.count == keypoints.count && worldKeypoints.contains { frame in
-            frame.contains { $0.count == 33 }
-        }
-    }
-
-    private var currentWorldPoses: [[PosePoint3D]] {
-        guard worldKeypoints.indices.contains(currentFrame) else { return [] }
-        return worldKeypoints[currentFrame]
-    }
-    
     // Calculate current time from frame number
     var currentTime: Double {
         if videoURL != nil { return playbackTime }
@@ -141,11 +128,6 @@ struct SkeletonPlaybackView: View {
                 .ignoresSafeArea()
             }
 
-            if displayMode == .threeD {
-                Pose3DView(poses: currentWorldPoses)
-                    .ignoresSafeArea()
-            }
-
             if (displayMode == .skeleton || displayMode == .both), isProcessing, !skeletonIsAvailable {
                 Text("Skeleton buffering…")
                     .font(.system(size: 16, weight: .semibold))
@@ -190,9 +172,7 @@ struct SkeletonPlaybackView: View {
                     HStack(spacing: 8) {
                         ForEach(PlaybackDisplayMode.allCases) { mode in
                             Button {
-                                if mode != .threeD || has3DFrames {
-                                    displayMode = mode
-                                }
+                                displayMode = mode
                             } label: {
                                 Text(mode.rawValue)
                                     .font(.system(size: 16, weight: .bold))
@@ -208,8 +188,6 @@ struct SkeletonPlaybackView: View {
                                             .stroke(.white.opacity(0.8), lineWidth: 1)
                                     }
                             }
-                            .disabled(mode == .threeD && !has3DFrames)
-                            .opacity(mode == .threeD && !has3DFrames ? 0.38 : 1)
                         }
                     }
                     .padding(.horizontal, 48)
@@ -227,16 +205,6 @@ struct SkeletonPlaybackView: View {
                     .padding(.top, 8)
                 }
 
-                if displayMode == .threeD {
-                    Label("Drag to rotate • Pinch to zoom", systemImage: "rotate.3d")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.82))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(Color.black.opacity(0.58), in: Capsule())
-                        .padding(.top, 8)
-                }
-                
                 Spacer()
             }
             
@@ -394,8 +362,7 @@ struct SkeletonPlaybackView: View {
             beats: beats,
             bpm: bpm,
             hasVideo: videoURL != nil,
-            cameraPosition: cameraPosition,
-            worldKeypoints: worldKeypoints
+            cameraPosition: cameraPosition
         )
         
         // Save locally

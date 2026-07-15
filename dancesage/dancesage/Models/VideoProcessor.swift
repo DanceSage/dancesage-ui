@@ -7,7 +7,6 @@ import MediaPipeTasksVision
 
 class VideoProcessor: ObservableObject {
     @Published var keypoints: [[[CGPoint]]] = []
-    @Published var worldKeypoints: [[[PosePoint3D]]] = []
     @Published var frameTimes: [Double] = []
     @Published var isProcessing = false
     @Published var progress: Double = 0.0
@@ -60,7 +59,6 @@ class VideoProcessor: ObservableObject {
         
         isProcessing = true
         keypoints = []
-        worldKeypoints = []
         frameTimes = []
         progress = 0.0
         
@@ -94,7 +92,6 @@ class VideoProcessor: ObservableObject {
         var frameCount = 0
         var detectedCount = 0
         var pendingKeypoints: [[[CGPoint]]] = []
-        var pendingWorldKeypoints: [[[PosePoint3D]]] = []
         var pendingFrameTimes: [Double] = []
         var lastPublishTime = 0.0
 
@@ -102,15 +99,12 @@ class VideoProcessor: ObservableObject {
             guard !pendingFrameTimes.isEmpty || finished else { return }
 
             let keypointBatch = pendingKeypoints
-            let worldKeypointBatch = pendingWorldKeypoints
             let timeBatch = pendingFrameTimes
             pendingKeypoints.removeAll(keepingCapacity: true)
-            pendingWorldKeypoints.removeAll(keepingCapacity: true)
             pendingFrameTimes.removeAll(keepingCapacity: true)
 
             DispatchQueue.main.async {
                 self.keypoints.append(contentsOf: keypointBatch)
-                self.worldKeypoints.append(contentsOf: worldKeypointBatch)
                 self.frameTimes.append(contentsOf: timeBatch)
                 self.progress = finished ? 1 : min(frameTime / duration, 1)
                 if finished {
@@ -128,16 +122,10 @@ class VideoProcessor: ObservableObject {
                 frameCount += 1
                 
                 let poses: [[CGPoint]]?
-                let worldPoses: [[PosePoint3D]]
                 if partnerMode {
                     poses = detectPoseVision(in: cgImage)
-                    worldPoses = []
-                } else if let detection = detectPoseMediaPipe(in: cgImage) {
-                    poses = detection.points
-                    worldPoses = detection.worldPoints
                 } else {
-                    poses = nil
-                    worldPoses = []
+                    poses = detectPoseMediaPipe(in: cgImage)
                 }
 
                 if poses != nil {
@@ -145,7 +133,6 @@ class VideoProcessor: ObservableObject {
                 }
 
                 pendingKeypoints.append(poses ?? [])
-                pendingWorldKeypoints.append(worldPoses)
                 pendingFrameTimes.append(currentTime)
 
                 // Publish at most twice per second so SwiftUI and AVPlayer stay responsive.
@@ -169,9 +156,7 @@ class VideoProcessor: ObservableObject {
     }
     
     // MARK: - MediaPipe — Styling (33 points, single person)
-    private func detectPoseMediaPipe(
-        in cgImage: CGImage
-    ) -> (points: [[CGPoint]], worldPoints: [[PosePoint3D]])? {
+    private func detectPoseMediaPipe(in cgImage: CGImage) -> [[CGPoint]]? {
         guard let poseLandmarker = poseLandmarker else { return nil }
         
         let uiImage = UIImage(cgImage: cgImage)
@@ -181,13 +166,9 @@ class VideoProcessor: ObservableObject {
             let result = try poseLandmarker.detect(image: mpImage)
             guard !result.landmarks.isEmpty else { return nil }
             
-            let points = result.landmarks.map { pose in
+            return result.landmarks.map { pose in
                 pose.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }
             }
-            let worldPoints = result.worldLandmarks.map { pose in
-                pose.map { PosePoint3D(x: $0.x, y: $0.y, z: $0.z) }
-            }
-            return (points, worldPoints)
         } catch {
             print("❌ MediaPipe error: \(error)")
             return nil

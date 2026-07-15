@@ -1,11 +1,5 @@
 import Foundation
 
-struct PosePoint3D: Codable, Equatable {
-    let x: Float
-    let y: Float
-    let z: Float
-}
-
 struct DanceRecording: Codable, Identifiable {
     enum Mode: String, Codable {
         case styling
@@ -24,7 +18,6 @@ struct DanceRecording: Codable, Identifiable {
     let bpm: Double?
     let hasVideo: Bool?
     let cameraPosition: String?
-    let worldKeypoints: [[[PosePoint3D]]]?
     
     init(
         name: String,
@@ -35,8 +28,7 @@ struct DanceRecording: Codable, Identifiable {
         beats: [Double] = [],
         bpm: Double = 0,
         hasVideo: Bool = false,
-        cameraPosition: String? = nil,
-        worldKeypoints: [[[PosePoint3D]]] = []
+        cameraPosition: String? = nil
     ) {
         self.id = UUID().uuidString
         self.name = name
@@ -50,7 +42,6 @@ struct DanceRecording: Codable, Identifiable {
         self.bpm = bpm > 0 ? bpm : nil
         self.hasVideo = hasVideo
         self.cameraPosition = cameraPosition
-        self.worldKeypoints = worldKeypoints.count == keypoints.count ? worldKeypoints : nil
     }
 
     var effectiveFPS: Double { max(fps ?? 15, 1) }
