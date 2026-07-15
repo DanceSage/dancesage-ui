@@ -130,12 +130,9 @@ struct SkeletonOverlay: View {
                         
                         let scaled = scaledPoint(point, in: size)
                         
-                        let scale = bodyScale(for: personKeypoints, in: size)
-                        let radius = jointRadius(
-                            for: index,
-                            landmarkCount: personKeypoints.count,
-                            scale: scale
-                        )
+                        // Larger circles for key joints, smaller for hand/foot detail
+                        let radius: CGFloat = [11, 12, 23, 24].contains(index) ? 8 :
+                                              [13, 14, 25, 26].contains(index) ? 6.5 : 4.5
                         let jointRect = CGRect(
                             x: scaled.x - radius,
                             y: scaled.y - radius,
@@ -145,37 +142,24 @@ struct SkeletonOverlay: View {
                         let jointPath = Circle().path(in: jointRect)
 
                         context.drawLayer { layer in
-                            layer.addFilter(.shadow(color: palette.secondary.opacity(0.82), radius: 7 * scale))
-                            layer.fill(
-                                jointPath,
-                                with: .radialGradient(
-                                    Gradient(colors: [
-                                        .white,
-                                        palette.primary,
-                                        palette.secondary,
-                                        Color.black.opacity(0.55)
-                                    ]),
-                                    center: CGPoint(x: scaled.x - radius * 0.30, y: scaled.y - radius * 0.30),
-                                    startRadius: 0,
-                                    endRadius: radius * 1.25
-                                )
-                            )
+                            layer.addFilter(.shadow(color: palette.secondary.opacity(0.9), radius: 7))
+                            layer.fill(jointPath, with: .color(palette.secondary))
                         }
                         context.stroke(
                             jointPath,
-                            with: .color(.white.opacity(0.72)),
-                            style: StrokeStyle(lineWidth: max(0.8, 1.2 * scale))
+                            with: .color(.white.opacity(0.9)),
+                            style: StrokeStyle(lineWidth: 1.3)
                         )
 
-                        let coreRadius = max(1.3, radius * 0.20)
+                        let coreRadius = max(2, radius * 0.34)
                         context.fill(
                             Circle().path(in: CGRect(
-                                x: scaled.x - radius * 0.38 - coreRadius,
-                                y: scaled.y - radius * 0.38 - coreRadius,
+                                x: scaled.x - coreRadius,
+                                y: scaled.y - coreRadius,
                                 width: coreRadius * 2,
                                 height: coreRadius * 2
                             )),
-                            with: .color(.white.opacity(0.92))
+                            with: .color(.white)
                         )
                     }
                 }
@@ -190,8 +174,6 @@ struct SkeletonOverlay: View {
         palette: SkeletonPalette,
         connections: [(Int, Int)]
     ) {
-        let scale = bodyScale(for: keypoints, in: size)
-
         for (startIdx, endIdx) in connections {
             guard startIdx < keypoints.count, endIdx < keypoints.count else { continue }
             
@@ -204,146 +186,42 @@ struct SkeletonOverlay: View {
             let startPoint = scaledPoint(startKp, in: size)
             let endPoint = scaledPoint(endKp, in: size)
             
-            let radii = boneRadii(
-                start: startIdx,
-                end: endIdx,
-                landmarkCount: keypoints.count,
-                scale: scale
-            )
-            guard let bone = taperedCapsule(
-                from: startPoint,
-                to: endPoint,
-                startRadius: radii.start,
-                endRadius: radii.end
-            ) else { continue }
+            // Thinner lines for hand and foot detail
+            let isDetail = [17, 18, 19, 20, 21, 22, 29, 30, 31, 32].contains(startIdx) ||
+                           [17, 18, 19, 20, 21, 22, 29, 30, 31, 32].contains(endIdx)
+            let lineWidth: CGFloat = isDetail ? 2.5 : 4
+            
+            var path = Path()
+            path.move(to: startPoint)
+            path.addLine(to: endPoint)
 
-            let dx = endPoint.x - startPoint.x
-            let dy = endPoint.y - startPoint.y
-            let length = hypot(dx, dy)
-            let perpendicular = CGVector(dx: -dy / length, dy: dx / length)
-            let midpoint = CGPoint(x: (startPoint.x + endPoint.x) / 2, y: (startPoint.y + endPoint.y) / 2)
-            let widest = max(radii.start, radii.end)
-            let shadeStart = CGPoint(
-                x: midpoint.x - perpendicular.dx * widest,
-                y: midpoint.y - perpendicular.dy * widest
-            )
-            let shadeEnd = CGPoint(
-                x: midpoint.x + perpendicular.dx * widest,
-                y: midpoint.y + perpendicular.dy * widest
+            // A soft under-stroke keeps the skeleton legible against busy clothing.
+            context.stroke(
+                path,
+                with: .color(palette.primary.opacity(0.22)),
+                style: StrokeStyle(lineWidth: lineWidth + 8, lineCap: .round, lineJoin: .round)
             )
 
             context.drawLayer { layer in
-                layer.addFilter(.shadow(color: palette.primary.opacity(0.72), radius: 6 * scale))
-                layer.fill(
-                    bone,
+                layer.addFilter(.shadow(color: palette.primary.opacity(0.9), radius: 7))
+                layer.stroke(
+                    path,
                     with: .linearGradient(
-                        Gradient(stops: [
-                            .init(color: Color.black.opacity(0.58), location: 0),
-                            .init(color: palette.secondary.opacity(0.95), location: 0.18),
-                            .init(color: palette.primary, location: 0.48),
-                            .init(color: .white.opacity(0.92), location: 0.64),
-                            .init(color: palette.primary, location: 0.76),
-                            .init(color: Color.black.opacity(0.52), location: 1)
-                        ]),
-                        startPoint: shadeStart,
-                        endPoint: shadeEnd
-                    )
+                        Gradient(colors: [palette.primary, palette.secondary]),
+                        startPoint: startPoint,
+                        endPoint: endPoint
+                    ),
+                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
                 )
             }
-            context.stroke(bone, with: .color(.white.opacity(0.38)), lineWidth: max(0.7, scale))
+
+            // A narrow highlight makes the bones feel luminous rather than flat.
+            context.stroke(
+                path,
+                with: .color(.white.opacity(0.58)),
+                style: StrokeStyle(lineWidth: max(1, lineWidth * 0.24), lineCap: .round)
+            )
         }
-    }
-
-    private func taperedCapsule(
-        from start: CGPoint,
-        to end: CGPoint,
-        startRadius: CGFloat,
-        endRadius: CGFloat
-    ) -> Path? {
-        let dx = end.x - start.x
-        let dy = end.y - start.y
-        let length = hypot(dx, dy)
-        guard length > 0.5 else { return nil }
-
-        let forward = CGVector(dx: dx / length, dy: dy / length)
-        let perpendicular = CGVector(dx: -forward.dy, dy: forward.dx)
-        let startUpper = CGPoint(x: start.x + perpendicular.dx * startRadius, y: start.y + perpendicular.dy * startRadius)
-        let startLower = CGPoint(x: start.x - perpendicular.dx * startRadius, y: start.y - perpendicular.dy * startRadius)
-        let endUpper = CGPoint(x: end.x + perpendicular.dx * endRadius, y: end.y + perpendicular.dy * endRadius)
-        let endLower = CGPoint(x: end.x - perpendicular.dx * endRadius, y: end.y - perpendicular.dy * endRadius)
-
-        var path = Path()
-        path.move(to: startUpper)
-        path.addLine(to: endUpper)
-        path.addQuadCurve(
-            to: endLower,
-            control: CGPoint(x: end.x + forward.dx * endRadius, y: end.y + forward.dy * endRadius)
-        )
-        path.addLine(to: startLower)
-        path.addQuadCurve(
-            to: startUpper,
-            control: CGPoint(x: start.x - forward.dx * startRadius, y: start.y - forward.dy * startRadius)
-        )
-        path.closeSubpath()
-        return path
-    }
-
-    private func boneRadii(
-        start: Int,
-        end: Int,
-        landmarkCount: Int,
-        scale: CGFloat
-    ) -> (start: CGFloat, end: CGFloat) {
-        let pair = (start, end)
-
-        if landmarkCount == 33 {
-            switch pair {
-            case (23, 25), (24, 26): return (9.5 * scale, 7.6 * scale)
-            case (25, 27), (26, 28): return (7.6 * scale, 5.4 * scale)
-            case (11, 13), (12, 14): return (7.2 * scale, 6.0 * scale)
-            case (13, 15), (14, 16): return (6.0 * scale, 4.3 * scale)
-            case (11, 23), (12, 24): return (6.2 * scale, 7.2 * scale)
-            case (11, 12), (23, 24): return (5.5 * scale, 5.5 * scale)
-            case (27, 29), (28, 30), (27, 31), (28, 32), (29, 31), (30, 32):
-                return (3.4 * scale, 2.8 * scale)
-            case (15, 17), (16, 18), (15, 19), (16, 20), (15, 21), (16, 22), (17, 19), (18, 20):
-                return (2.8 * scale, 1.9 * scale)
-            default: return (2.5 * scale, 2.0 * scale)
-            }
-        }
-
-        switch pair {
-        case (11, 13), (12, 14): return (9.5 * scale, 7.6 * scale)
-        case (13, 15), (14, 16): return (7.6 * scale, 5.4 * scale)
-        case (5, 7), (6, 8): return (7.2 * scale, 6.0 * scale)
-        case (7, 9), (8, 10): return (6.0 * scale, 4.3 * scale)
-        case (5, 11), (6, 12): return (6.2 * scale, 7.2 * scale)
-        case (5, 6), (11, 12): return (5.5 * scale, 5.5 * scale)
-        default: return (2.5 * scale, 2.0 * scale)
-        }
-    }
-
-    private func jointRadius(for index: Int, landmarkCount: Int, scale: CGFloat) -> CGFloat {
-        let largeJoints: Set<Int> = landmarkCount == 33 ? [11, 12, 23, 24] : [5, 6, 11, 12]
-        let mediumJoints: Set<Int> = landmarkCount == 33 ? [13, 14, 25, 26] : [7, 8, 13, 14]
-        let smallJoints: Set<Int> = landmarkCount == 33 ? [15, 16, 27, 28] : [9, 10, 15, 16]
-
-        if largeJoints.contains(index) { return 8.2 * scale }
-        if mediumJoints.contains(index) { return 6.6 * scale }
-        if smallJoints.contains(index) { return 5.0 * scale }
-        return 3.8 * scale
-    }
-
-    private func bodyScale(for keypoints: [CGPoint], in size: CGSize) -> CGFloat {
-        let shoulders = keypoints.count == 33 ? (11, 12) : (5, 6)
-        guard shoulders.0 < keypoints.count, shoulders.1 < keypoints.count else { return 1 }
-        let left = keypoints[shoulders.0]
-        let right = keypoints[shoulders.1]
-        guard left.x >= 0, left.y >= 0, right.x >= 0, right.y >= 0 else { return 1 }
-        let leftScaled = scaledPoint(left, in: size)
-        let rightScaled = scaledPoint(right, in: size)
-        let shoulderWidth = hypot(rightScaled.x - leftScaled.x, rightScaled.y - leftScaled.y)
-        return min(max(shoulderWidth / 115, 0.62), 1.45)
     }
 
     private func scaledPoint(_ point: CGPoint, in size: CGSize) -> CGPoint {
