@@ -13,7 +13,7 @@ class VideoProcessor: ObservableObject {
     
     private var poseLandmarker: PoseLandmarker?  // MediaPipe — styling only
     private var isPartnerMode: Bool = false
-    private let processingQueue = DispatchQueue(label: "com.dancesage.video-processing", qos: .userInitiated)
+    private let processingQueue = DispatchQueue(label: "com.dancesage.video-processing", qos: .utility)
     
     // Apple Vision joint order — 17 points — partner mode
     private let jointOrder: [VNHumanBodyPoseObservation.JointName] = [
@@ -91,6 +91,28 @@ class VideoProcessor: ObservableObject {
         var currentTime = 0.0
         var frameCount = 0
         var detectedCount = 0
+        var pendingKeypoints: [[[CGPoint]]] = []
+        var pendingFrameTimes: [Double] = []
+        var lastPublishTime = 0.0
+
+        func publishPending(progress frameTime: Double, finished: Bool = false) {
+            guard !pendingFrameTimes.isEmpty || finished else { return }
+
+            let keypointBatch = pendingKeypoints
+            let timeBatch = pendingFrameTimes
+            pendingKeypoints.removeAll(keepingCapacity: true)
+            pendingFrameTimes.removeAll(keepingCapacity: true)
+
+            DispatchQueue.main.async {
+                self.keypoints.append(contentsOf: keypointBatch)
+                self.frameTimes.append(contentsOf: timeBatch)
+                self.progress = finished ? 1 : min(frameTime / duration, 1)
+                if finished {
+                    self.isProcessing = false
+                    print("✅ Done — \(frameCount) frames, \(detectedCount) with poses")
+                }
+            }
+        }
         
         while currentTime < duration {
             let time = CMTime(seconds: currentTime, preferredTimescale: 600)
@@ -107,12 +129,13 @@ class VideoProcessor: ObservableObject {
                     detectedCount += 1
                 }
 
-                let framePoses = poses ?? []
-                let frameTime = currentTime
-                DispatchQueue.main.async {
-                    self.keypoints.append(framePoses)
-                    self.frameTimes.append(frameTime)
-                    self.progress = min(frameTime / duration, 1.0)
+                pendingKeypoints.append(poses ?? [])
+                pendingFrameTimes.append(currentTime)
+
+                // Publish at most twice per second so SwiftUI and AVPlayer stay responsive.
+                if currentTime - lastPublishTime >= 0.5 {
+                    publishPending(progress: currentTime)
+                    lastPublishTime = currentTime
                 }
                 
                 if frameCount % 30 == 0 {
@@ -126,11 +149,7 @@ class VideoProcessor: ObservableObject {
             currentTime += frameInterval
         }
 
-        DispatchQueue.main.async {
-            self.progress = 1
-            self.isProcessing = false
-            print("✅ Done — \(frameCount) frames, \(detectedCount) with poses")
-        }
+        publishPending(progress: duration, finished: true)
     }
     
     // MARK: - MediaPipe — Styling (33 points, single person)

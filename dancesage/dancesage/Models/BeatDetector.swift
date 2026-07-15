@@ -19,7 +19,9 @@ class BeatDetector: ObservableObject {
         
         Task {
             do {
-                let result = try await extractAndAnalyzeAudio(from: videoURL)
+                let result = try await Task.detached(priority: .utility) {
+                    try await Self.extractAndAnalyzeAudio(from: videoURL)
+                }.value
                 
                 self.beats = result.beats
                 self.bpm = result.bpm
@@ -34,7 +36,7 @@ class BeatDetector: ObservableObject {
         }
     }
     
-    private func extractAndAnalyzeAudio(from videoURL: URL) async throws -> (beats: [Double], bpm: Double) {
+    nonisolated private static func extractAndAnalyzeAudio(from videoURL: URL) async throws -> (beats: [Double], bpm: Double) {
         let asset = AVURLAsset(url: videoURL)
         
         // Get audio track
@@ -92,7 +94,7 @@ class BeatDetector: ObservableObject {
     }
     
     /// Simple onset detection using energy difference
-    private func detectOnsets(samples: [Float], sampleRate: Double) -> [Double] {
+    nonisolated private static func detectOnsets(samples: [Float], sampleRate: Double) -> [Double] {
         let hopSize = 512       // Samples between analysis frames
         let windowSize = 2048   // FFT window size
         
@@ -151,7 +153,7 @@ class BeatDetector: ObservableObject {
     }
     
     /// Calculate adaptive threshold based on signal statistics
-    private func calculateAdaptiveThreshold(_ signal: [Float]) -> Float {
+    nonisolated private static func calculateAdaptiveThreshold(_ signal: [Float]) -> Float {
         var mean: Float = 0
         var stdDev: Float = 0
         var length = vDSP_Length(signal.count)
@@ -173,7 +175,7 @@ class BeatDetector: ObservableObject {
     }
     
     /// Calculate BPM from beat timestamps
-    private func calculateBPM(beats: [Double]) -> Double {
+    nonisolated private static func calculateBPM(beats: [Double]) -> Double {
         guard beats.count >= 2 else { return 0 }
         
         // Calculate intervals between consecutive beats
@@ -197,4 +199,3 @@ class BeatDetector: ObservableObject {
         return 60.0 / avgInterval
     }
 }
-
