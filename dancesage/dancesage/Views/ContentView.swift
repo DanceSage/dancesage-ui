@@ -24,6 +24,9 @@ struct ContentView: View {
     private var currentRecordedKeypoints: [[[CGPoint]]] {
         isPartnerMode ? visionDetector.recordedKeypoints : poseDetector.recordedKeypoints
     }
+    private var currentRecordedWorldKeypoints: [[[PosePoint3D]]] {
+        isPartnerMode ? [] : poseDetector.recordedWorldKeypoints
+    }
     private var currentRecordedFrameTimes: [Double] {
         isPartnerMode ? visionDetector.recordedFrameTimes : poseDetector.recordedFrameTimes
     }
@@ -139,7 +142,8 @@ struct ContentView: View {
                     frameTimes: currentRecordedFrameTimes,
                     recordingMode: isPartnerMode ? .partner : .styling,
                     videoURL: capturedVideoURL,
-                    cameraPosition: cameraPosition == .front ? "front" : "back"
+                    cameraPosition: cameraPosition == .front ? "front" : "back",
+                    worldKeypoints: currentRecordedWorldKeypoints
                 )
             }
             .alert("Camera Error", isPresented: Binding(

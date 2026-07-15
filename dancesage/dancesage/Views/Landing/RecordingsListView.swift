@@ -67,7 +67,8 @@ struct RecordingsListView: View {
                     frameTimes: recording.effectiveFrameTimes,
                     recordingMode: recording.mode ?? .styling,
                     videoURL: RecordingStore.shared.existingVideoURL(for: recording),
-                    cameraPosition: recording.cameraPosition
+                    cameraPosition: recording.cameraPosition,
+                    worldKeypoints: recording.worldKeypoints ?? []
                 )
             }
             .alert("Recording Error", isPresented: Binding(

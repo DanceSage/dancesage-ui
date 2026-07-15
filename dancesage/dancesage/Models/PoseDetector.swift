@@ -5,7 +5,9 @@ import UIKit
 
 class PoseDetector: NSObject, ObservableObject {
     @Published var keypoints: [[CGPoint]] = []
+    @Published var worldKeypoints: [[PosePoint3D]] = []
     @Published var recordedKeypoints: [[[CGPoint]]] = []
+    @Published var recordedWorldKeypoints: [[[PosePoint3D]]] = []
     @Published var recordedFrameTimes: [Double] = []
     @Published var isRecording = false
     
@@ -63,6 +65,7 @@ class PoseDetector: NSObject, ObservableObject {
     
     func startRecording() {
         recordedKeypoints = []
+        recordedWorldKeypoints = []
         recordedFrameTimes = []
         recordingStartedAt = ProcessInfo.processInfo.systemUptime
         isRecording = true
@@ -77,6 +80,7 @@ class PoseDetector: NSObject, ObservableObject {
     
     func clearRecording() {
         recordedKeypoints = []
+        recordedWorldKeypoints = []
         recordedFrameTimes = []
         recordingStartedAt = nil
         print("🗑️ Recording cleared")
@@ -121,6 +125,7 @@ extension PoseDetector: PoseLandmarkerLiveStreamDelegate {
         
         // Use ALL 33 landmarks — no mapping, no dropping
         var allPoses: [[CGPoint]] = []
+        var allWorldPoses: [[PosePoint3D]] = []
         
         for pose in result.landmarks {
             let points: [CGPoint] = pose.map { landmark in
@@ -128,11 +133,19 @@ extension PoseDetector: PoseLandmarkerLiveStreamDelegate {
             }
             allPoses.append(points)
         }
+
+        for pose in result.worldLandmarks {
+            allWorldPoses.append(pose.map { landmark in
+                PosePoint3D(x: landmark.x, y: landmark.y, z: landmark.z)
+            })
+        }
         
         DispatchQueue.main.async {
             self.keypoints = allPoses
+            self.worldKeypoints = allWorldPoses
             if self.isRecording {
                 self.recordedKeypoints.append(allPoses)
+                self.recordedWorldKeypoints.append(allWorldPoses)
                 let startedAt = self.recordingStartedAt ?? ProcessInfo.processInfo.systemUptime
                 self.recordedFrameTimes.append(ProcessInfo.processInfo.systemUptime - startedAt)
             }

@@ -18,7 +18,8 @@ struct VideoProcessingView: View {
             recordingMode: isPartnerMode ? .partner : .styling,
             videoURL: videoURL,
             isProcessing: videoProcessor.isProcessing,
-            processingProgress: videoProcessor.progress
+            processingProgress: videoProcessor.progress,
+            worldKeypoints: videoProcessor.worldKeypoints
         )
         .onAppear {
             guard !hasStarted else { return }
