@@ -11,6 +11,13 @@ struct LandingView: View {
     @State private var showVideoModeSelection = false
     @State private var videoMode: DanceMode = .styling
     @State private var videoImportError = ""
+
+    // Matches the outer pixels of AppLogo so the JPEG blends into the page.
+    private let logoBackground = Color(
+        red: 81.0 / 255.0,
+        green: 63.0 / 255.0,
+        blue: 89.0 / 255.0
+    )
     
     enum DanceMode {
         case styling
@@ -28,6 +35,7 @@ struct LandingView: View {
             
             Text("Dance Sage")
                 .font(.system(size: 36, weight: .bold))
+                .foregroundColor(.white)
             
             Spacer()
             
@@ -69,6 +77,7 @@ struct LandingView: View {
             
             Spacer()
         }
+        .background(logoBackground.ignoresSafeArea())
         .sheet(isPresented: $showModeSelection) {
             ModeSelectionView(
                 selectedMode: $selectedMode,
