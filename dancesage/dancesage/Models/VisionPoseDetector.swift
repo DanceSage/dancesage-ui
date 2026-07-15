@@ -8,9 +8,11 @@ import CoreVideo
 class VisionPoseDetector: ObservableObject {
     @Published var keypoints: [[CGPoint]] = []
     @Published var recordedKeypoints: [[[CGPoint]]] = []
+    @Published var recordedFrameTimes: [Double] = []
     @Published var isRecording = false
     
     private var sequenceHandler = VNSequenceRequestHandler()
+    private var recordingStartedAt: TimeInterval?
     
     // Tracking: store previous frame's hip centers to match people across frames
     private var previousHipCenters: [CGPoint] = []
@@ -132,8 +134,8 @@ class VisionPoseDetector: ObservableObject {
             
             if self.isRecording {
                 self.recordedKeypoints.append(allPoses)
-                // Send frame to backend immediately
-                let frameIndex = self.recordedKeypoints.count - 1
+                let startedAt = self.recordingStartedAt ?? ProcessInfo.processInfo.systemUptime
+                self.recordedFrameTimes.append(ProcessInfo.processInfo.systemUptime - startedAt)
             }
         }
         
@@ -234,18 +236,22 @@ class VisionPoseDetector: ObservableObject {
     // Recording controls
     func startRecording() {
         recordedKeypoints = []
+        recordedFrameTimes = []
+        recordingStartedAt = ProcessInfo.processInfo.systemUptime
         isRecording = true
         print("🔴 Recording started (Vision)")
     }
     
     func stopRecording() {
         isRecording = false
+        recordingStartedAt = nil
         print("⏹️ Recording stopped - captured \(recordedKeypoints.count) frames")
     }
     
     func clearRecording() {
         recordedKeypoints = []
+        recordedFrameTimes = []
+        recordingStartedAt = nil
         print("🗑️ Recording cleared")
     }
 }
-

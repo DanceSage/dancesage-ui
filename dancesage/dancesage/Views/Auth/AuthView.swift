@@ -7,13 +7,16 @@ import GoogleSignInSwift
 struct AuthView: View {
     @State private var email = ""
     @State private var password = ""
-    @State private var isLoggedIn = false
+    @State private var user: User?
+    @State private var isUnlocked = false
+    @State private var authListener: AuthStateDidChangeListenerHandle?
+    @State private var isAuthenticating = false
     @State private var errorMessage = ""
     @AppStorage("hasSignedInBefore") private var hasSignedInBefore = false
     
     var body: some View {
-        if isLoggedIn {
-            ContentView()
+        if user != nil && isUnlocked {
+            ContentView(onSignOut: signOut)
         } else {
             VStack(spacing: 20) {
                 Spacer()
@@ -83,20 +86,37 @@ struct AuthView: View {
                 
                 Spacer()
             }
-            .onAppear {
+            .onAppear(perform: startObservingAuthentication)
+        }
+    }
+
+    func startObservingAuthentication() {
+        guard authListener == nil else { return }
+        authListener = Auth.auth().addStateDidChangeListener { _, currentUser in
+            user = currentUser
+            if currentUser == nil {
+                isUnlocked = false
+                isAuthenticating = false
+            } else if !isUnlocked && !isAuthenticating {
                 if hasSignedInBefore {
                     authenticateWithBiometric()
+                } else {
+                    isUnlocked = true
+                    hasSignedInBefore = true
                 }
             }
         }
     }
     
     func authenticateWithBiometric() {
+        guard Auth.auth().currentUser != nil else { return }
+        isAuthenticating = true
         BiometricAuth.shared.authenticate { success, error in
+            isAuthenticating = false
             if success {
-                isLoggedIn = true
+                isUnlocked = true
             } else {
-                errorMessage = "Authentication failed"
+                errorMessage = error?.localizedDescription ?? "Authentication failed"
             }
         }
     }
@@ -130,7 +150,7 @@ struct AuthView: View {
                 if let error = error {
                     errorMessage = error.localizedDescription
                 } else {
-                    isLoggedIn = true
+                    isUnlocked = true
                     hasSignedInBefore = true
                 }
             }
@@ -142,7 +162,7 @@ struct AuthView: View {
             if let error = error {
                 errorMessage = error.localizedDescription
             } else {
-                isLoggedIn = true
+                isUnlocked = true
                 hasSignedInBefore = true
             }
         }
@@ -153,9 +173,20 @@ struct AuthView: View {
             if let error = error {
                 errorMessage = error.localizedDescription
             } else {
-                isLoggedIn = true
+                isUnlocked = true
                 hasSignedInBefore = true
             }
+        }
+    }
+
+    func signOut() {
+        do {
+            try Auth.auth().signOut()
+            GIDSignIn.sharedInstance.signOut()
+            isUnlocked = false
+            hasSignedInBefore = false
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }

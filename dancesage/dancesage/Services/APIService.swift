@@ -1,19 +1,50 @@
 import Foundation
+import FirebaseAuth
+
+enum APIServiceError: LocalizedError {
+    case notConfigured
+    case invalidResponse
+    case server(statusCode: Int, message: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .notConfigured:
+            return "The DanceSage API address is not configured. The recording remains saved on this device."
+        case .invalidResponse:
+            return "The DanceSage API returned an invalid response."
+        case let .server(statusCode, message):
+            return "The DanceSage API returned HTTP \(statusCode): \(message)"
+        }
+    }
+}
 
 class APIService {
     static let shared = APIService()
     
-    // For physical device: use your Mac's local IP address
-    // For simulator: use http://127.0.0.1:8000/api
-    private let baseURL = "http://192.168.2.183:8000/api"
+    private var baseURL: URL? {
+        let configured = (Bundle.main.object(forInfoDictionaryKey: "DANCESAGE_API_BASE_URL") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let configured,
+              !configured.isEmpty,
+              !configured.contains("$("),
+              let url = URL(string: configured) else { return nil }
+        return url
+    }
+
+    private func request(path: String) async throws -> URLRequest {
+        guard let baseURL else { throw APIServiceError.notConfigured }
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let user = Auth.auth().currentUser,
+           let token = try? await user.getIDToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        return request
+    }
     
     // Send a single frame during live recording
     func uploadFrame(_ frame: [[CGPoint]], frameIndex: Int) async {
-        let url = URL(string: "\(baseURL)/refine-pose")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
         // Convert single frame: people → points → [x, y]
         let frameArray: [[[Double]]] = frame.map { person in
             person.map { point in
@@ -30,6 +61,7 @@ class APIService {
         ]
         
         do {
+            var request = try await request(path: "refine-pose")
             request.httpBody = try JSONSerialization.data(withJSONObject: payload)
             let (_, response) = try await URLSession.shared.data(for: request)
             
@@ -46,10 +78,7 @@ class APIService {
     }
     
     func uploadKeypoints(_ recording: DanceRecording) async throws {
-        let url = URL(string: "\(baseURL)/refine-pose")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var request = try await request(path: "refine-pose")
         
         // Convert CGPoint to [x, y] arrays for JSON
         // Structure: frames → people → points → [x, y]
@@ -70,9 +99,12 @@ class APIService {
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
-            throw URLError(.badServerResponse)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIServiceError.invalidResponse
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw APIServiceError.server(statusCode: httpResponse.statusCode, message: message)
         }
         
         print("✅ Successfully uploaded keypoints: \(recording.name)")

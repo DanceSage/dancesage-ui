@@ -6,10 +6,12 @@ import UIKit
 class PoseDetector: NSObject, ObservableObject {
     @Published var keypoints: [[CGPoint]] = []
     @Published var recordedKeypoints: [[[CGPoint]]] = []
+    @Published var recordedFrameTimes: [Double] = []
     @Published var isRecording = false
     
     private var poseLandmarker: PoseLandmarker?
     private var currentNumPoses: Int = 1
+    private var recordingStartedAt: TimeInterval?
     
     override init() {
         super.init()
@@ -61,17 +63,22 @@ class PoseDetector: NSObject, ObservableObject {
     
     func startRecording() {
         recordedKeypoints = []
+        recordedFrameTimes = []
+        recordingStartedAt = ProcessInfo.processInfo.systemUptime
         isRecording = true
         print("🔴 Recording started")
     }
     
     func stopRecording() {
         isRecording = false
+        recordingStartedAt = nil
         print("⏹️ Recording stopped - captured \(recordedKeypoints.count) frames")
     }
     
     func clearRecording() {
         recordedKeypoints = []
+        recordedFrameTimes = []
+        recordingStartedAt = nil
         print("🗑️ Recording cleared")
     }
 }
@@ -126,6 +133,8 @@ extension PoseDetector: PoseLandmarkerLiveStreamDelegate {
             self.keypoints = allPoses
             if self.isRecording {
                 self.recordedKeypoints.append(allPoses)
+                let startedAt = self.recordingStartedAt ?? ProcessInfo.processInfo.systemUptime
+                self.recordedFrameTimes.append(ProcessInfo.processInfo.systemUptime - startedAt)
             }
         }
     }

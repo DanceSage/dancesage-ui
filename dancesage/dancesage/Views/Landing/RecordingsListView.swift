@@ -4,6 +4,7 @@ struct RecordingsListView: View {
     @State private var recordings: [DanceRecording] = []
     @State private var selectedRecording: DanceRecording?
     @State private var showPlayback = false
+    @State private var errorMessage = ""
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
@@ -58,30 +59,43 @@ struct RecordingsListView: View {
             }
             .fullScreenCover(isPresented: $showPlayback) {
                 if let recording = selectedRecording {
-                    SkeletonPlaybackView(keypoints: recording.keypoints, allowSave: true)
+                    SkeletonPlaybackView(
+                        keypoints: recording.keypoints,
+                        allowSave: false,
+                        beats: recording.beats ?? [],
+                        bpm: recording.bpm ?? 0,
+                        fps: recording.effectiveFPS,
+                        frameTimes: recording.effectiveFrameTimes,
+                        recordingMode: recording.mode ?? .styling
+                    )
                 }
+            }
+            .alert("Recording Error", isPresented: Binding(
+                get: { !errorMessage.isEmpty },
+                set: { if !$0 { errorMessage = "" } }
+            )) {
+                Button("OK", role: .cancel) { errorMessage = "" }
+            } message: {
+                Text(errorMessage)
             }
         }
     }
     
     func loadRecordings() {
-        guard let data = UserDefaults.standard.data(forKey: "savedDances"),
-              let loaded = try? JSONDecoder().decode([DanceRecording].self, from: data) else {
+        do {
+            recordings = try RecordingStore.shared.load()
+        } catch {
             recordings = []
-            return
+            errorMessage = error.localizedDescription
         }
-        recordings = loaded
     }
     
     func deleteRecording(at offsets: IndexSet) {
-        recordings.remove(atOffsets: offsets)
-        
         do {
-            let data = try JSONEncoder().encode(recordings)
-            UserDefaults.standard.set(data, forKey: "savedDances")
+            recordings = try RecordingStore.shared.delete(at: offsets)
             print("✅ Recording deleted")
         } catch {
-            print("❌ Failed to delete: \(error)")
+            errorMessage = error.localizedDescription
         }
     }
 }

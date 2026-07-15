@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
+    var onSignOut: () -> Void = {}
     // MediaPipe for single person (Styling mode)
     @StateObject private var poseDetector = PoseDetector()
     // Apple Vision for multi-person (Partner mode) - much better detection!
@@ -17,6 +18,9 @@ struct ContentView: View {
     }
     private var currentRecordedKeypoints: [[[CGPoint]]] {
         isPartnerMode ? visionDetector.recordedKeypoints : poseDetector.recordedKeypoints
+    }
+    private var currentRecordedFrameTimes: [Double] {
+        isPartnerMode ? visionDetector.recordedFrameTimes : poseDetector.recordedFrameTimes
     }
     private var isRecording: Bool {
         isPartnerMode ? visionDetector.isRecording : poseDetector.isRecording
@@ -118,19 +122,18 @@ struct ContentView: View {
                 SkeletonPlaybackView(
                     keypoints: currentRecordedKeypoints,
                     allowSave: true,
-                    useVisionIndices: isPartnerMode
+                    useVisionIndices: isPartnerMode,
+                    fps: 20,
+                    frameTimes: currentRecordedFrameTimes,
+                    recordingMode: isPartnerMode ? .partner : .styling
                 )
             }
         } else {
-            LandingView(showCamera: $showCamera, selectedMode: $selectedMode)
+            LandingView(showCamera: $showCamera, selectedMode: $selectedMode, onSignOut: onSignOut)
         }
     }
     
     func loadAllRecordings() -> [DanceRecording] {
-        guard let data = UserDefaults.standard.data(forKey: "savedDances"),
-              let recordings = try? JSONDecoder().decode([DanceRecording].self, from: data) else {
-            return []
-        }
-        return recordings
+        (try? RecordingStore.shared.load()) ?? []
     }
 }

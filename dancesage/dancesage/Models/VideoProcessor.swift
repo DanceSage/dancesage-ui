@@ -7,6 +7,7 @@ import MediaPipeTasksVision
 
 class VideoProcessor: ObservableObject {
     @Published var keypoints: [[[CGPoint]]] = []
+    @Published var frameTimes: [Double] = []
     @Published var isProcessing = false
     @Published var progress: Double = 0.0
     
@@ -57,6 +58,7 @@ class VideoProcessor: ObservableObject {
         
         isProcessing = true
         keypoints = []
+        frameTimes = []
         progress = 0.0
         
         let asset = AVURLAsset(url: url)
@@ -92,6 +94,7 @@ class VideoProcessor: ObservableObject {
         let frameInterval = 1.0 / targetFPS
         var currentTime = 0.0
         var allKeypoints: [[[CGPoint]]] = []
+        var allFrameTimes: [Double] = []
         var frameCount = 0
         var detectedCount = 0
         
@@ -106,8 +109,9 @@ class VideoProcessor: ObservableObject {
                     ? detectPoseVision(in: cgImage)
                     : detectPoseMediaPipe(in: cgImage)
                 
-                if let poses = poses {
-                    allKeypoints.append(poses)
+                allKeypoints.append(poses ?? [])
+                allFrameTimes.append(currentTime)
+                if poses != nil {
                     detectedCount += 1
                 }
                 
@@ -128,6 +132,7 @@ class VideoProcessor: ObservableObject {
         
         await MainActor.run {
             self.keypoints = allKeypoints
+            self.frameTimes = allFrameTimes
             self.isProcessing = false
             print("✅ Done — \(frameCount) frames, \(detectedCount) with poses")
         }

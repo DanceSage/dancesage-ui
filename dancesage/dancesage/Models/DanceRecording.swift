@@ -1,18 +1,47 @@
 import Foundation
 
 struct DanceRecording: Codable, Identifiable {
+    enum Mode: String, Codable {
+        case styling
+        case partner
+    }
+
     let id: String
     let name: String
     let keypoints: [[[CGPoint]]]
     let timestamp: Date
     let frameCount: Int
+    let mode: Mode?
+    let fps: Double?
+    let frameTimes: [Double]?
+    let beats: [Double]?
+    let bpm: Double?
     
-    init(name: String, keypoints: [[[CGPoint]]]) {
+    init(
+        name: String,
+        keypoints: [[[CGPoint]]],
+        mode: Mode = .styling,
+        fps: Double = 15,
+        frameTimes: [Double] = [],
+        beats: [Double] = [],
+        bpm: Double = 0
+    ) {
         self.id = UUID().uuidString
         self.name = name
         self.keypoints = keypoints
         self.timestamp = Date()
         self.frameCount = keypoints.count
+        self.mode = mode
+        self.fps = fps
+        self.frameTimes = frameTimes.count == keypoints.count ? frameTimes : nil
+        self.beats = beats.isEmpty ? nil : beats
+        self.bpm = bpm > 0 ? bpm : nil
+    }
+
+    var effectiveFPS: Double { max(fps ?? 15, 1) }
+    var effectiveFrameTimes: [Double] {
+        if let frameTimes, frameTimes.count == keypoints.count { return frameTimes }
+        return keypoints.indices.map { Double($0) / effectiveFPS }
     }
 }
 

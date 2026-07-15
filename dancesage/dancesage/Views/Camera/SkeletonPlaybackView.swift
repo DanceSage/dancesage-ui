@@ -8,22 +8,39 @@ struct SkeletonPlaybackView: View {
     var useVisionIndices: Bool = false  // For Vision vs MediaPipe joint mapping
     var beats: [Double] = []  // Beat timestamps in seconds
     var bpm: Double = 0
-    var fps: Double = 15  // Frames per second (matches VideoProcessor targetFPS)
+    var fps: Double = 15
+    var frameTimes: [Double] = []
+    var recordingMode: DanceRecording.Mode = .styling
     var videoURL: URL? = nil  // Optional video URL for audio playback
     
     @State private var currentFrame = 0
     @State private var isPlaying = false
     @State private var showSaveDialog = false
     @State private var recordingName = ""
-    @State private var currentBeat = 0  // Which beat in the 8-count (1-8)
-    @State private var beatFlash = false  // For visual pulse on beat
     @State private var audioPlayer: AVPlayer? = nil
+    @State private var playbackStartedAt: Date?
+    @State private var playbackStartTime: Double = 0
+    @State private var saveError = ""
+    @State private var saveResultMessage = ""
+    @State private var isSaving = false
     @Environment(\.dismiss) var dismiss
-    let timer = Timer.publish(every: 0.06, on: .main, in: .common).autoconnect()
+    let timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
+
+    private var effectiveFPS: Double { max(fps, 1) }
+    private var effectiveFrameTimes: [Double] {
+        frameTimes.count == keypoints.count
+            ? frameTimes
+            : keypoints.indices.map { Double($0) / effectiveFPS }
+    }
+
+    private var duration: Double {
+        (effectiveFrameTimes.last ?? 0) + (1 / effectiveFPS)
+    }
     
     // Calculate current time from frame number
     var currentTime: Double {
-        Double(currentFrame) / fps
+        guard effectiveFrameTimes.indices.contains(currentFrame) else { return 0 }
+        return effectiveFrameTimes[currentFrame]
     }
     
     // Find which beat we're on (1-8 in the salsa count)
@@ -77,6 +94,7 @@ struct SkeletonPlaybackView: View {
                                 .foregroundColor(.blue)
                                 .padding()
                         }
+                        .disabled(isSaving)
                     }
                 }
                 
@@ -132,7 +150,7 @@ struct SkeletonPlaybackView: View {
                         Text("Frame")
                             .font(.caption)
                             .foregroundColor(.gray)
-                        Text("\(currentFrame + 1)")
+                        Text(keypoints.isEmpty ? "0" : "\(currentFrame + 1)")
                             .font(.system(size: 24, weight: .bold, design: .monospaced))
                             .foregroundColor(.white)
                         Text("/ \(keypoints.count)")
@@ -187,15 +205,7 @@ struct SkeletonPlaybackView: View {
             audioPlayer = nil
         }
         .onReceive(timer) { _ in
-            if isPlaying {
-                currentFrame = (currentFrame + 1) % keypoints.count
-                
-                // Loop back to start
-                if currentFrame == 0 {
-                    resetPlayback()
-                    return
-                }
-            }
+            updatePlaybackPosition()
         }
         .alert("Save Recording", isPresented: $showSaveDialog) {
             TextField("Dance name", text: $recordingName)
@@ -208,45 +218,65 @@ struct SkeletonPlaybackView: View {
         } message: {
             Text("Enter a name for this dance recording")
         }
+        .alert("Could Not Save", isPresented: Binding(
+            get: { !saveError.isEmpty },
+            set: { if !$0 { saveError = "" } }
+        )) {
+            Button("OK", role: .cancel) { saveError = "" }
+        } message: {
+            Text(saveError)
+        }
+        .alert("Recording Saved", isPresented: Binding(
+            get: { !saveResultMessage.isEmpty },
+            set: { if !$0 { saveResultMessage = "" } }
+        )) {
+            Button("Done") { dismiss() }
+        } message: {
+            Text(saveResultMessage)
+        }
     }
     
     func saveRecording() {
         guard !recordingName.isEmpty else { return }
         
-        let recording = DanceRecording(name: recordingName, keypoints: keypoints)
+        guard !keypoints.isEmpty else {
+            saveError = "This recording does not contain any frames."
+            return
+        }
+
+        let recording = DanceRecording(
+            name: recordingName,
+            keypoints: keypoints,
+            mode: recordingMode,
+            fps: effectiveFPS,
+            frameTimes: effectiveFrameTimes,
+            beats: beats,
+            bpm: bpm
+        )
         
         // Save locally
         do {
-            var savedRecordings = loadAllRecordings()
-            savedRecordings.append(recording)
-            
-            let allData = try JSONEncoder().encode(savedRecordings)
-            UserDefaults.standard.set(allData, forKey: "savedDances")
-            
+            isSaving = true
+            try RecordingStore.shared.append(recording)
             print("✅ Saved recording locally: \(recordingName)")
         } catch {
-            print("❌ Failed to save locally: \(error)")
+            isSaving = false
+            saveError = error.localizedDescription
+            return
         }
         
         // Send to backend
         Task {
             do {
                 try await APIService.shared.uploadKeypoints(recording)
+                saveResultMessage = "Saved on this iPhone and uploaded to the DanceSage API."
             } catch {
-                print("❌ Failed to upload to backend: \(error)")
+                saveResultMessage = "Saved on this iPhone. API upload was skipped: \(error.localizedDescription)"
             }
+            isSaving = false
         }
         
         recordingName = ""
-        dismiss()  // Close playback after saving
-    }
-    
-    func loadAllRecordings() -> [DanceRecording] {
-        guard let data = UserDefaults.standard.data(forKey: "savedDances"),
-              let recordings = try? JSONDecoder().decode([DanceRecording].self, from: data) else {
-            return []
-        }
-        return recordings
     }
     
     // MARK: - Audio Playback
@@ -272,22 +302,48 @@ struct SkeletonPlaybackView: View {
     }
     
     func togglePlayback() {
+        guard !keypoints.isEmpty else { return }
         isPlaying.toggle()
         
         if isPlaying {
+            playbackStartTime = currentTime
+            playbackStartedAt = Date()
             // Sync audio to current frame position
             let targetTime = CMTime(seconds: currentTime, preferredTimescale: 600)
             audioPlayer?.seek(to: targetTime) { _ in
                 self.audioPlayer?.play()
             }
         } else {
+            playbackStartedAt = nil
             audioPlayer?.pause()
         }
+    }
+
+    func updatePlaybackPosition() {
+        guard isPlaying, !keypoints.isEmpty else { return }
+
+        let elapsed: Double
+        if let audioPlayer, audioPlayer.timeControlStatus == .playing {
+            elapsed = audioPlayer.currentTime().seconds
+        } else if let playbackStartedAt {
+            elapsed = playbackStartTime + Date().timeIntervalSince(playbackStartedAt)
+        } else {
+            return
+        }
+
+        guard elapsed.isFinite, elapsed < duration else {
+            resetPlayback()
+            return
+        }
+
+        currentFrame = effectiveFrameTimes.lastIndex(where: { $0 <= elapsed }) ?? 0
     }
     
     func resetPlayback() {
         isPlaying = false
         currentFrame = 0
+        playbackStartedAt = nil
+        playbackStartTime = 0
         audioPlayer?.pause()
         audioPlayer?.seek(to: .zero)
     }

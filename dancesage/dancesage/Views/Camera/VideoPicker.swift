@@ -4,6 +4,7 @@ import PhotosUI
 struct VideoPicker: UIViewControllerRepresentable {
     @Environment(\.dismiss) var dismiss
     @Binding var selectedVideoURL: URL?
+    @Binding var errorMessage: String
     
     func makeUIViewController(context: Context) -> PHPickerViewController {
         var config = PHPickerConfiguration()
@@ -35,14 +36,23 @@ struct VideoPicker: UIViewControllerRepresentable {
             
             if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
                 provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, error in
-                    if let url = url {
-                        // Copy to temp directory
-                        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(url.lastPathComponent)
-                        try? FileManager.default.copyItem(at: url, to: tempURL)
-                        
+                    guard let url else {
                         DispatchQueue.main.async {
-                            self.parent.selectedVideoURL = tempURL
+                            self.parent.errorMessage = error?.localizedDescription ?? "The selected video could not be opened."
                         }
+                        return
+                    }
+
+                    let extensionName = url.pathExtension.isEmpty ? "mov" : url.pathExtension
+                    let tempURL = FileManager.default.temporaryDirectory
+                        .appendingPathComponent(UUID().uuidString)
+                        .appendingPathExtension(extensionName)
+
+                    do {
+                        try FileManager.default.copyItem(at: url, to: tempURL)
+                        DispatchQueue.main.async { self.parent.selectedVideoURL = tempURL }
+                    } catch {
+                        DispatchQueue.main.async { self.parent.errorMessage = error.localizedDescription }
                     }
                 }
             }

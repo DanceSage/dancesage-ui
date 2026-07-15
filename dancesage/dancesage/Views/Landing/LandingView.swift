@@ -3,6 +3,7 @@ import SwiftUI
 struct LandingView: View {
     @Binding var showCamera: Bool
     @Binding var selectedMode: DanceMode
+    var onSignOut: () -> Void = {}
     @State private var showVideoPicker = false
     @State private var selectedVideoURL: URL?
     @State private var showVideoProcessing = false
@@ -10,6 +11,7 @@ struct LandingView: View {
     @State private var showModeSelection = false
     @State private var showVideoModeSelection = false
     @State private var videoMode: DanceMode = .styling
+    @State private var videoImportError = ""
     
     enum DanceMode {
         case styling
@@ -18,6 +20,13 @@ struct LandingView: View {
     
     var body: some View {
         VStack(spacing: 30) {
+            HStack {
+                Spacer()
+                Button("Sign Out", action: onSignOut)
+                    .font(.subheadline)
+                    .padding(.trailing, 20)
+            }
+
             Spacer()
             
             Image("AppLogo")
@@ -78,9 +87,9 @@ struct LandingView: View {
             )
         }
         .sheet(isPresented: $showVideoPicker) {
-            VideoPicker(selectedVideoURL: $selectedVideoURL)
+            VideoPicker(selectedVideoURL: $selectedVideoURL, errorMessage: $videoImportError)
         }
-        .sheet(isPresented: $showVideoProcessing) {
+        .sheet(isPresented: $showVideoProcessing, onDismiss: cleanupSelectedVideo) {
             if let url = selectedVideoURL {
                 VideoProcessingView(videoURL: url, isPartnerMode: videoMode == .partner)
             }
@@ -102,6 +111,20 @@ struct LandingView: View {
                 showVideoProcessing = true
             }
         }
+        .alert("Video Import Failed", isPresented: Binding(
+            get: { !videoImportError.isEmpty },
+            set: { if !$0 { videoImportError = "" } }
+        )) {
+            Button("OK", role: .cancel) { videoImportError = "" }
+        } message: {
+            Text(videoImportError)
+        }
+    }
+
+    private func cleanupSelectedVideo() {
+        guard let selectedVideoURL else { return }
+        try? FileManager.default.removeItem(at: selectedVideoURL)
+        self.selectedVideoURL = nil
     }
 }
 

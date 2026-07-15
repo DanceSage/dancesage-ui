@@ -7,6 +7,10 @@ struct VideoProcessingView: View {
     var isPartnerMode: Bool = true  // true = show both dancers, false = show only first
     @Environment(\.dismiss) var dismiss
     @State private var showPlayback = false
+
+    private var hasDetectedPoses: Bool {
+        videoProcessor.keypoints.contains { !$0.isEmpty }
+    }
     
     var body: some View {
         VStack(spacing: 30) {
@@ -41,7 +45,7 @@ struct VideoProcessingView: View {
                 
                 Text("\(Int(videoProcessor.progress * 100))%")
                     .font(.headline)
-            } else if !videoProcessor.keypoints.isEmpty {
+            } else if hasDetectedPoses {
                 Text("✅ Processing Complete!")
                     .font(.headline)
                     .foregroundColor(.green)
@@ -97,6 +101,9 @@ struct VideoProcessingView: View {
                 allowSave: true,
                 beats: beatDetector.beats,
                 bpm: beatDetector.bpm,
+                fps: 15,
+                frameTimes: videoProcessor.frameTimes,
+                recordingMode: isPartnerMode ? .partner : .styling,
                 videoURL: videoURL
             )
         }
