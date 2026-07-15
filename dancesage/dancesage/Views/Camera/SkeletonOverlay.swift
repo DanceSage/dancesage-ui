@@ -5,7 +5,18 @@ struct SkeletonOverlay: View {
     var useVisionIndices: Bool = false  // kept for compatibility, not used in styling mode
     var videoAspect: CGFloat = 9.0 / 16.0
     
-    private let personColors: [Color] = [.green, .red]
+    private struct SkeletonPalette {
+        let primary: Color
+        let secondary: Color
+    }
+
+    // Jewel-toned palettes echo the DanceSage logo and stay visible on video or white.
+    private let personPalettes: [SkeletonPalette] = [
+        SkeletonPalette(primary: Color(red: 0.20, green: 0.95, blue: 0.92),
+                        secondary: Color(red: 0.94, green: 0.30, blue: 0.92)),
+        SkeletonPalette(primary: Color(red: 1.00, green: 0.78, blue: 0.18),
+                        secondary: Color(red: 1.00, green: 0.28, blue: 0.30))
+    ]
     
     // Full 33 MediaPipe landmark indices:
     // 0: nose
@@ -96,12 +107,22 @@ struct SkeletonOverlay: View {
                 for (personIndex, personKeypoints) in keypoints.enumerated() {
                     // Support both 17-point (Vision/partner) and 33-point (MediaPipe/styling)
                     guard personKeypoints.count == 17 || personKeypoints.count == 33 else { continue }
-                    let color = personColors[personIndex % personColors.count]
+                    let palette = personPalettes[personIndex % personPalettes.count]
                     
                     // Use correct point set based on landmark count
                     let activePoints = personKeypoints.count == 33 ? pointsToShow : pointsToShow17
 
-                    // Draw joint circles
+                    // Bones go down first so the luminous joints sit crisply on top.
+                    let activeConnections = personKeypoints.count == 33 ? connections : connections17
+                    drawSkeleton(
+                        context: context,
+                        keypoints: personKeypoints,
+                        size: size,
+                        palette: palette,
+                        connections: activeConnections
+                    )
+
+                    // Draw glowing joint rings with a bright center point.
                     for index in activePoints {
                         guard index < personKeypoints.count else { continue }
                         let point = personKeypoints[index]
@@ -110,30 +131,49 @@ struct SkeletonOverlay: View {
                         let scaled = scaledPoint(point, in: size)
                         
                         // Larger circles for key joints, smaller for hand/foot detail
-                        let radius: CGFloat = [11, 12, 23, 24].contains(index) ? 10 :
-                                              [13, 14, 25, 26].contains(index) ? 8 : 6
-                        
+                        let radius: CGFloat = [11, 12, 23, 24].contains(index) ? 8 :
+                                              [13, 14, 25, 26].contains(index) ? 6.5 : 4.5
+                        let jointRect = CGRect(
+                            x: scaled.x - radius,
+                            y: scaled.y - radius,
+                            width: radius * 2,
+                            height: radius * 2
+                        )
+                        let jointPath = Circle().path(in: jointRect)
+
+                        context.drawLayer { layer in
+                            layer.addFilter(.shadow(color: palette.secondary.opacity(0.9), radius: 7))
+                            layer.fill(jointPath, with: .color(palette.secondary))
+                        }
+                        context.stroke(
+                            jointPath,
+                            with: .color(.white.opacity(0.9)),
+                            style: StrokeStyle(lineWidth: 1.3)
+                        )
+
+                        let coreRadius = max(2, radius * 0.34)
                         context.fill(
                             Circle().path(in: CGRect(
-                                x: scaled.x - radius,
-                                y: scaled.y - radius,
-                                width: radius * 2,
-                                height: radius * 2
+                                x: scaled.x - coreRadius,
+                                y: scaled.y - coreRadius,
+                                width: coreRadius * 2,
+                                height: coreRadius * 2
                             )),
-                            with: .color(color)
+                            with: .color(.white)
                         )
                     }
-                    
-                    // Draw skeleton lines
-                    // Draw skeleton lines with correct connection set
-                    let activeConnections = personKeypoints.count == 33 ? connections : connections17
-                    drawSkeleton(context: context, keypoints: personKeypoints, size: size, color: color, connections: activeConnections)
                 }
             }
         }
     }
     
-    private func drawSkeleton(context: GraphicsContext, keypoints: [CGPoint], size: CGSize, color: Color, connections: [(Int, Int)]) {
+    private func drawSkeleton(
+        context: GraphicsContext,
+        keypoints: [CGPoint],
+        size: CGSize,
+        palette: SkeletonPalette,
+        connections: [(Int, Int)]
+    ) {
         for (startIdx, endIdx) in connections {
             guard startIdx < keypoints.count, endIdx < keypoints.count else { continue }
             
@@ -149,13 +189,38 @@ struct SkeletonOverlay: View {
             // Thinner lines for hand and foot detail
             let isDetail = [17, 18, 19, 20, 21, 22, 29, 30, 31, 32].contains(startIdx) ||
                            [17, 18, 19, 20, 21, 22, 29, 30, 31, 32].contains(endIdx)
-            let lineWidth: CGFloat = isDetail ? 2 : 3
+            let lineWidth: CGFloat = isDetail ? 2.5 : 4
             
             var path = Path()
             path.move(to: startPoint)
             path.addLine(to: endPoint)
-            
-            context.stroke(path, with: .color(color), lineWidth: lineWidth)
+
+            // A soft under-stroke keeps the skeleton legible against busy clothing.
+            context.stroke(
+                path,
+                with: .color(palette.primary.opacity(0.22)),
+                style: StrokeStyle(lineWidth: lineWidth + 8, lineCap: .round, lineJoin: .round)
+            )
+
+            context.drawLayer { layer in
+                layer.addFilter(.shadow(color: palette.primary.opacity(0.9), radius: 7))
+                layer.stroke(
+                    path,
+                    with: .linearGradient(
+                        Gradient(colors: [palette.primary, palette.secondary]),
+                        startPoint: startPoint,
+                        endPoint: endPoint
+                    ),
+                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
+                )
+            }
+
+            // A narrow highlight makes the bones feel luminous rather than flat.
+            context.stroke(
+                path,
+                with: .color(.white.opacity(0.58)),
+                style: StrokeStyle(lineWidth: max(1, lineWidth * 0.24), lineCap: .round)
+            )
         }
     }
 
