@@ -1,9 +1,17 @@
 import SwiftUI
 
+enum SkeletonVisualStyle: String, CaseIterable, Identifiable {
+    case glow = "Sage Glow"
+    case puppet = "Dance Doll"
+
+    var id: Self { self }
+}
+
 struct SkeletonOverlay: View {
     let keypoints: [[CGPoint]]
     var useVisionIndices: Bool = false  // kept for compatibility, not used in styling mode
     var videoAspect: CGFloat = 9.0 / 16.0
+    var style: SkeletonVisualStyle = .glow
     
     private struct SkeletonPalette {
         let primary: Color
@@ -108,6 +116,11 @@ struct SkeletonOverlay: View {
                     // Support both 17-point (Vision/partner) and 33-point (MediaPipe/styling)
                     guard personKeypoints.count == 17 || personKeypoints.count == 33 else { continue }
                     let palette = personPalettes[personIndex % personPalettes.count]
+
+                    if style == .puppet {
+                        drawPuppet(context: context, keypoints: personKeypoints, size: size, palette: palette)
+                        continue
+                    }
                     
                     // Use correct point set based on landmark count
                     let activePoints = personKeypoints.count == 33 ? pointsToShow : pointsToShow17
@@ -165,6 +178,202 @@ struct SkeletonOverlay: View {
                 }
             }
         }
+    }
+
+    private func drawPuppet(
+        context: GraphicsContext,
+        keypoints: [CGPoint],
+        size: CGSize,
+        palette: SkeletonPalette
+    ) {
+        let isMediaPipe = keypoints.count == 33
+        let shoulderIndices = isMediaPipe ? (11, 12) : (5, 6)
+        let elbowIndices = isMediaPipe ? (13, 14) : (7, 8)
+        let wristIndices = isMediaPipe ? (15, 16) : (9, 10)
+        let hipIndices = isMediaPipe ? (23, 24) : (11, 12)
+        let kneeIndices = isMediaPipe ? (25, 26) : (13, 14)
+        let ankleIndices = isMediaPipe ? (27, 28) : (15, 16)
+
+        guard let leftShoulder = screenPoint(shoulderIndices.0, in: keypoints, size: size),
+              let rightShoulder = screenPoint(shoulderIndices.1, in: keypoints, size: size),
+              let leftHip = screenPoint(hipIndices.0, in: keypoints, size: size),
+              let rightHip = screenPoint(hipIndices.1, in: keypoints, size: size) else { return }
+
+        let shoulderWidth = hypot(rightShoulder.x - leftShoulder.x, rightShoulder.y - leftShoulder.y)
+        let limbWidth = min(max(shoulderWidth * 0.13, 9), 24)
+        let detailWidth = limbWidth * 0.78
+
+        // Legs and arms are laid behind the body like a jointed cloth doll.
+        drawPuppetChain(
+            context: context,
+            indices: [hipIndices.0, kneeIndices.0, ankleIndices.0],
+            keypoints: keypoints,
+            size: size,
+            width: limbWidth,
+            colors: [palette.primary, palette.secondary]
+        )
+        drawPuppetChain(
+            context: context,
+            indices: [hipIndices.1, kneeIndices.1, ankleIndices.1],
+            keypoints: keypoints,
+            size: size,
+            width: limbWidth,
+            colors: [palette.secondary, palette.primary]
+        )
+        drawPuppetChain(
+            context: context,
+            indices: [shoulderIndices.0, elbowIndices.0, wristIndices.0],
+            keypoints: keypoints,
+            size: size,
+            width: detailWidth,
+            colors: [palette.secondary, palette.primary]
+        )
+        drawPuppetChain(
+            context: context,
+            indices: [shoulderIndices.1, elbowIndices.1, wristIndices.1],
+            keypoints: keypoints,
+            size: size,
+            width: detailWidth,
+            colors: [palette.primary, palette.secondary]
+        )
+
+        var torso = Path()
+        torso.move(to: leftShoulder)
+        torso.addLine(to: rightShoulder)
+        torso.addLine(to: rightHip)
+        torso.addLine(to: leftHip)
+        torso.closeSubpath()
+        context.drawLayer { layer in
+            layer.addFilter(.shadow(color: palette.secondary.opacity(0.7), radius: 10))
+            layer.fill(
+                torso,
+                with: .linearGradient(
+                    Gradient(colors: [palette.secondary, palette.primary]),
+                    startPoint: leftShoulder,
+                    endPoint: rightHip
+                )
+            )
+        }
+        context.stroke(torso, with: .color(.white.opacity(0.88)), style: StrokeStyle(lineWidth: 2, lineJoin: .round))
+
+        // A stitched waist and buttons give the character a rag-doll personality.
+        var waist = Path()
+        waist.move(to: leftHip)
+        waist.addLine(to: rightHip)
+        context.stroke(waist, with: .color(.white.opacity(0.85)), style: StrokeStyle(lineWidth: 2, dash: [5, 4]))
+
+        let torsoCenter = CGPoint(
+            x: (leftShoulder.x + rightShoulder.x + leftHip.x + rightHip.x) / 4,
+            y: (leftShoulder.y + rightShoulder.y + leftHip.y + rightHip.y) / 4
+        )
+        let torsoHeight = hypot(
+            ((leftHip.x + rightHip.x) / 2) - ((leftShoulder.x + rightShoulder.x) / 2),
+            ((leftHip.y + rightHip.y) / 2) - ((leftShoulder.y + rightShoulder.y) / 2)
+        )
+        for offset in [-0.22, 0.0, 0.22] {
+            let buttonCenter = CGPoint(x: torsoCenter.x, y: torsoCenter.y + torsoHeight * offset)
+            context.fill(Circle().path(in: CGRect(x: buttonCenter.x - 3, y: buttonCenter.y - 3, width: 6, height: 6)), with: .color(.white))
+        }
+
+        drawPuppetHead(
+            context: context,
+            keypoints: keypoints,
+            size: size,
+            shoulderWidth: shoulderWidth,
+            palette: palette
+        )
+
+        // Hands and feet finish the silhouette.
+        for index in [wristIndices.0, wristIndices.1] {
+            if let point = screenPoint(index, in: keypoints, size: size) {
+                let radius = detailWidth * 0.55
+                context.fill(Circle().path(in: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2)), with: .color(.white))
+                context.stroke(Circle().path(in: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2)), with: .color(palette.secondary), lineWidth: 2)
+            }
+        }
+
+        let footIndices = isMediaPipe ? [31, 32] : [ankleIndices.0, ankleIndices.1]
+        for index in footIndices {
+            if let point = screenPoint(index, in: keypoints, size: size) {
+                let footRect = CGRect(x: point.x - limbWidth * 0.8, y: point.y - limbWidth * 0.35, width: limbWidth * 1.6, height: limbWidth * 0.7)
+                context.fill(Capsule().path(in: footRect), with: .color(palette.secondary))
+                context.stroke(Capsule().path(in: footRect), with: .color(.white.opacity(0.9)), lineWidth: 1.5)
+            }
+        }
+    }
+
+    private func drawPuppetChain(
+        context: GraphicsContext,
+        indices: [Int],
+        keypoints: [CGPoint],
+        size: CGSize,
+        width: CGFloat,
+        colors: [Color]
+    ) {
+        for pairIndex in 0..<(indices.count - 1) {
+            guard let start = screenPoint(indices[pairIndex], in: keypoints, size: size),
+                  let end = screenPoint(indices[pairIndex + 1], in: keypoints, size: size) else { continue }
+
+            var path = Path()
+            path.move(to: start)
+            path.addLine(to: end)
+            let startColor = colors[pairIndex % colors.count]
+            let endColor = colors[(pairIndex + 1) % colors.count]
+            context.drawLayer { layer in
+                layer.addFilter(.shadow(color: startColor.opacity(0.7), radius: 7))
+                layer.stroke(
+                    path,
+                    with: .linearGradient(Gradient(colors: [startColor, endColor]), startPoint: start, endPoint: end),
+                    style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round)
+                )
+            }
+            context.stroke(path, with: .color(.white.opacity(0.72)), style: StrokeStyle(lineWidth: 1.4, lineCap: .round, dash: [4, 5]))
+
+            let jointRadius = width * 0.36
+            context.fill(Circle().path(in: CGRect(x: end.x - jointRadius, y: end.y - jointRadius, width: jointRadius * 2, height: jointRadius * 2)), with: .color(endColor))
+            context.stroke(Circle().path(in: CGRect(x: end.x - jointRadius, y: end.y - jointRadius, width: jointRadius * 2, height: jointRadius * 2)), with: .color(.white.opacity(0.9)), lineWidth: 1.2)
+        }
+    }
+
+    private func drawPuppetHead(
+        context: GraphicsContext,
+        keypoints: [CGPoint],
+        size: CGSize,
+        shoulderWidth: CGFloat,
+        palette: SkeletonPalette
+    ) {
+        guard let nose = screenPoint(0, in: keypoints, size: size) else { return }
+        let radius = min(max(shoulderWidth * 0.20, 14), 38)
+        let headRect = CGRect(x: nose.x - radius, y: nose.y - radius, width: radius * 2, height: radius * 2)
+        let head = Circle().path(in: headRect)
+
+        context.drawLayer { layer in
+            layer.addFilter(.shadow(color: palette.primary.opacity(0.8), radius: 10))
+            layer.fill(head, with: .linearGradient(Gradient(colors: [.white, palette.primary]), startPoint: CGPoint(x: nose.x, y: nose.y - radius), endPoint: CGPoint(x: nose.x, y: nose.y + radius)))
+        }
+        context.stroke(head, with: .color(palette.secondary), lineWidth: 2.5)
+
+        let eyeRadius = max(2, radius * 0.10)
+        for direction: CGFloat in [-1, 1] {
+            let eye = CGPoint(x: nose.x + direction * radius * 0.34, y: nose.y - radius * 0.14)
+            context.fill(Circle().path(in: CGRect(x: eye.x - eyeRadius, y: eye.y - eyeRadius, width: eyeRadius * 2, height: eyeRadius * 2)), with: .color(Color(red: 0.18, green: 0.12, blue: 0.24)))
+            context.fill(Circle().path(in: CGRect(x: eye.x - eyeRadius * 0.3, y: eye.y - eyeRadius * 0.55, width: eyeRadius * 0.55, height: eyeRadius * 0.55)), with: .color(.white))
+        }
+
+        var smile = Path()
+        smile.move(to: CGPoint(x: nose.x - radius * 0.30, y: nose.y + radius * 0.18))
+        smile.addQuadCurve(
+            to: CGPoint(x: nose.x + radius * 0.30, y: nose.y + radius * 0.18),
+            control: CGPoint(x: nose.x, y: nose.y + radius * 0.48)
+        )
+        context.stroke(smile, with: .color(Color(red: 0.30, green: 0.15, blue: 0.32)), style: StrokeStyle(lineWidth: max(2, radius * 0.07), lineCap: .round))
+    }
+
+    private func screenPoint(_ index: Int, in keypoints: [CGPoint], size: CGSize) -> CGPoint? {
+        guard index < keypoints.count else { return nil }
+        let point = keypoints[index]
+        guard point.x >= 0, point.y >= 0 else { return nil }
+        return scaledPoint(point, in: size)
     }
     
     private func drawSkeleton(
