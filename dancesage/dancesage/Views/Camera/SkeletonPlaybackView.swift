@@ -67,6 +67,10 @@ struct SkeletonPlaybackView: View {
     private var duration: Double {
         (effectiveFrameTimes.last ?? 0) + (1 / effectiveFPS)
     }
+
+    private var chromeColor: Color {
+        displayMode == .skeleton ? .black : .white
+    }
     
     // Calculate current time from frame number
     var currentTime: Double {
@@ -95,7 +99,8 @@ struct SkeletonPlaybackView: View {
     
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            (displayMode == .skeleton ? Color.white : Color.black)
+                .ignoresSafeArea()
 
             if displayMode != .skeleton, let audioPlayer {
                 VideoSurface(player: audioPlayer)
@@ -119,7 +124,7 @@ struct SkeletonPlaybackView: View {
                     }) {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 40))
-                            .foregroundColor(.white)
+                            .foregroundColor(chromeColor)
                             .padding()
                     }
                     
@@ -218,7 +223,7 @@ struct SkeletonPlaybackView: View {
                             .foregroundColor(.gray)
                         Text(keypoints.isEmpty ? "0" : "\(currentFrame + 1)")
                             .font(.system(size: 24, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
+                            .foregroundColor(chromeColor)
                         Text("/ \(keypoints.count)")
                             .font(.caption)
                             .foregroundColor(.gray)
@@ -246,7 +251,7 @@ struct SkeletonPlaybackView: View {
                         }) {
                             Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                                 .font(.system(size: 60))
-                                .foregroundColor(.white)
+                                .foregroundColor(chromeColor)
                         }
                         
                         Button(action: {
@@ -254,7 +259,7 @@ struct SkeletonPlaybackView: View {
                         }) {
                             Image(systemName: "arrow.counterclockwise.circle.fill")
                                 .font(.system(size: 50))
-                                .foregroundColor(.white)
+                                .foregroundColor(chromeColor)
                         }
                     }
                     .padding(.trailing, 20)
