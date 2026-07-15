@@ -28,19 +28,17 @@ struct Pose3DView: UIViewRepresentable {
         private let camera = PerspectiveCamera()
         private var jointEntities: [ModelEntity] = []
         private var boneEntities: [ModelEntity] = []
-        private var headEntity: ModelEntity?
-        private var neckEntity: ModelEntity?
-        private var groundEntity: ModelEntity?
         private var yaw: Float = 0
         private var pitch: Float = 0.04
         private var distance: Float = 2.7
 
         private let connections: [(Int, Int)] = [
+            (0, 2), (0, 5), (2, 7), (5, 8),
             (11, 12), (11, 23), (12, 24), (23, 24),
-            (11, 13), (13, 15), (15, 19),
-            (12, 14), (14, 16), (16, 20),
-            (23, 25), (25, 27), (27, 29), (29, 31),
-            (24, 26), (26, 28), (28, 30), (30, 32)
+            (11, 13), (13, 15), (15, 17), (15, 19), (15, 21), (17, 19),
+            (12, 14), (14, 16), (16, 18), (16, 20), (16, 22), (18, 20),
+            (23, 25), (25, 27), (27, 29), (27, 31), (29, 31),
+            (24, 26), (26, 28), (28, 30), (28, 32), (30, 32)
         ]
 
         func install(in view: ARView) {
@@ -83,68 +81,35 @@ struct Pose3DView: UIViewRepresentable {
             for (index, connection) in connections.enumerated() {
                 positionBone(boneEntities[index], from: positions[connection.0], to: positions[connection.1])
             }
-
-            updateHead(using: positions)
-            let floorY = min(positions[29].y, positions[30].y, positions[31].y, positions[32].y) - 0.035
-            groundEntity?.position.y = floorY
         }
 
         private func buildMannequin() {
-            var jointMaterial = PhysicallyBasedMaterial()
-            jointMaterial.baseColor = .init(tint: UIColor(red: 0.95, green: 0.30, blue: 0.92, alpha: 1))
-            jointMaterial.emissiveColor = .init(color: UIColor(red: 0.16, green: 0.92, blue: 0.90, alpha: 1))
-            jointMaterial.emissiveIntensity = 0.45
-            jointMaterial.roughness = 0.24
-            jointMaterial.metallic = 0.22
+            let jointMaterial = SimpleMaterial(
+                color: UIColor(red: 1.0, green: 0.28, blue: 0.82, alpha: 1),
+                roughness: 0.35,
+                isMetallic: false
+            )
+            let boneMaterial = SimpleMaterial(
+                color: UIColor(red: 0.18, green: 0.94, blue: 0.92, alpha: 1),
+                roughness: 0.3,
+                isMetallic: false
+            )
 
-            let jointMesh = MeshResource.generateSphere(radius: 0.032)
-            jointEntities = (0..<33).map { index in
+            let jointMesh = MeshResource.generateSphere(radius: 0.018)
+            jointEntities = (0..<33).map { _ in
                 let joint = ModelEntity(mesh: jointMesh, materials: [jointMaterial])
-                let scale: Float = [11, 12, 23, 24].contains(index) ? 1.3 :
-                    [13, 14, 25, 26].contains(index) ? 1.12 : 0.82
-                joint.scale = SIMD3<Float>(repeating: scale)
                 mannequin.addChild(joint)
                 return joint
             }
 
-            boneEntities = connections.map { connection in
-                var material = PhysicallyBasedMaterial()
-                material.baseColor = .init(tint: UIColor(red: 0.18, green: 0.92, blue: 0.90, alpha: 1))
-                material.emissiveColor = .init(color: UIColor(red: 0.12, green: 0.55, blue: 0.62, alpha: 1))
-                material.emissiveIntensity = 0.32
-                material.roughness = 0.2
-                material.metallic = 0.3
-
-                let radius = radiusForBone(connection)
+            boneEntities = connections.map { _ in
                 let bone = ModelEntity(
-                    mesh: makeCylinderMesh(height: 1, radius: radius),
-                    materials: [material]
+                    mesh: makeCylinderMesh(height: 1, radius: 0.009, segments: 12),
+                    materials: [boneMaterial]
                 )
                 mannequin.addChild(bone)
                 return bone
             }
-
-            var headMaterial = PhysicallyBasedMaterial()
-            headMaterial.baseColor = .init(tint: UIColor(red: 1.0, green: 0.66, blue: 0.18, alpha: 1))
-            headMaterial.emissiveColor = .init(color: UIColor(red: 0.75, green: 0.18, blue: 0.48, alpha: 1))
-            headMaterial.emissiveIntensity = 0.22
-            headMaterial.roughness = 0.18
-            headMaterial.metallic = 0.38
-            let head = ModelEntity(mesh: .generateSphere(radius: 1), materials: [headMaterial])
-            mannequin.addChild(head)
-            headEntity = head
-
-            let neck = ModelEntity(
-                mesh: makeCylinderMesh(height: 1, radius: 0.038),
-                materials: [jointMaterial]
-            )
-            mannequin.addChild(neck)
-            neckEntity = neck
-
-            let groundMaterial = SimpleMaterial(color: UIColor.white.withAlphaComponent(0.10), roughness: 0.9, isMetallic: false)
-            let ground = ModelEntity(mesh: .generatePlane(width: 3, depth: 3), materials: [groundMaterial])
-            mannequin.addChild(ground)
-            groundEntity = ground
         }
 
         private func normalizedPositions(from points: [PosePoint3D]) -> [SIMD3<Float>] {
@@ -169,30 +134,6 @@ struct Pose3DView: UIViewRepresentable {
             bone.position = (start + end) / 2
             bone.orientation = simd_quatf(from: SIMD3<Float>(0, 1, 0), to: vector / length)
             bone.scale = SIMD3<Float>(1, length, 1)
-        }
-
-        private func updateHead(using positions: [SIMD3<Float>]) {
-            guard let headEntity, let neckEntity else { return }
-            let earCenter = (positions[7] + positions[8]) / 2
-            let faceCenter = (earCenter + positions[0]) / 2
-            let shoulderWidth = simd_length(positions[12] - positions[11])
-            let radius = min(max(shoulderWidth * 0.25, 0.085), 0.14)
-            headEntity.position = faceCenter
-            headEntity.scale = SIMD3<Float>(radius * 0.88, radius * 1.08, radius)
-            let shoulderCenter = (positions[11] + positions[12]) / 2
-            positionBone(neckEntity, from: shoulderCenter, to: faceCenter)
-        }
-
-        private func radiusForBone(_ connection: (Int, Int)) -> Float {
-            switch connection {
-            case (23, 25), (24, 26): return 0.052
-            case (25, 27), (26, 28): return 0.042
-            case (11, 13), (12, 14): return 0.040
-            case (13, 15), (14, 16): return 0.032
-            case (11, 23), (12, 24): return 0.045
-            case (27, 29), (28, 30), (29, 31), (30, 32): return 0.027
-            default: return 0.034
-            }
         }
 
         private func makeCylinderMesh(height: Float, radius: Float, segments: Int = 18) -> MeshResource {
