@@ -265,17 +265,8 @@ struct SkeletonPlaybackView: View {
             return
         }
         
-        // Send to backend
-        Task {
-            do {
-                try await APIService.shared.uploadKeypoints(recording)
-                saveResultMessage = "Saved on this iPhone and uploaded to the DanceSage API."
-            } catch {
-                saveResultMessage = "Saved on this iPhone. API upload was skipped: \(error.localizedDescription)"
-            }
-            isSaving = false
-        }
-        
+        saveResultMessage = "Saved on this iPhone."
+        isSaving = false
         recordingName = ""
     }
     

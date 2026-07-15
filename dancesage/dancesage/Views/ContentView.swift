@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct ContentView: View {
-    var onSignOut: () -> Void = {}
     // MediaPipe for single person (Styling mode)
     @StateObject private var poseDetector = PoseDetector()
     // Apple Vision for multi-person (Partner mode) - much better detection!
@@ -129,7 +128,7 @@ struct ContentView: View {
                 )
             }
         } else {
-            LandingView(showCamera: $showCamera, selectedMode: $selectedMode, onSignOut: onSignOut)
+            LandingView(showCamera: $showCamera, selectedMode: $selectedMode)
         }
     }
     

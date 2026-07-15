@@ -3,7 +3,6 @@ import SwiftUI
 struct LandingView: View {
     @Binding var showCamera: Bool
     @Binding var selectedMode: DanceMode
-    var onSignOut: () -> Void = {}
     @State private var showVideoPicker = false
     @State private var selectedVideoURL: URL?
     @State private var showVideoProcessing = false
@@ -20,13 +19,6 @@ struct LandingView: View {
     
     var body: some View {
         VStack(spacing: 30) {
-            HStack {
-                Spacer()
-                Button("Sign Out", action: onSignOut)
-                    .font(.subheadline)
-                    .padding(.trailing, 20)
-            }
-
             Spacer()
             
             Image("AppLogo")
