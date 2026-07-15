@@ -14,6 +14,8 @@ class PoseDetector: NSObject, ObservableObject {
     private var poseLandmarker: PoseLandmarker?
     private var currentNumPoses: Int = 1
     private var recordingStartedAt: TimeInterval?
+    private var smoothedKeypoints: [[CGPoint]] = []
+    private var smoothedWorldKeypoints: [[PosePoint3D]] = []
     
     override init() {
         super.init()
@@ -28,6 +30,9 @@ class PoseDetector: NSObject, ObservableObject {
     }
     
     private func setupPoseLandmarker(numPoses: Int) {
+        smoothedKeypoints = []
+        smoothedWorldKeypoints = []
+
         guard let modelPath = Bundle.main.path(forResource: "pose_landmarker_heavy", ofType: "task") else {
             print("❌ Model file not found")
             return
@@ -37,9 +42,9 @@ class PoseDetector: NSObject, ObservableObject {
         options.baseOptions.modelAssetPath = modelPath
         options.runningMode = .liveStream
         options.numPoses = numPoses
-        options.minPoseDetectionConfidence = 0.1
-        options.minPosePresenceConfidence = 0.1
-        options.minTrackingConfidence = 0.1
+        options.minPoseDetectionConfidence = 0.3
+        options.minPosePresenceConfidence = 0.3
+        options.minTrackingConfidence = 0.3
         options.poseLandmarkerLiveStreamDelegate = self
         
         do {
@@ -84,6 +89,54 @@ class PoseDetector: NSObject, ObservableObject {
         recordedFrameTimes = []
         recordingStartedAt = nil
         print("🗑️ Recording cleared")
+    }
+
+    private func stabilize(_ poses: [[CGPoint]]) -> [[CGPoint]] {
+        guard poses.count == smoothedKeypoints.count else {
+            smoothedKeypoints = poses
+            return poses
+        }
+
+        let stabilized = zip(poses, smoothedKeypoints).map { currentPose, previousPose in
+            guard currentPose.count == previousPose.count else { return currentPose }
+            return zip(currentPose, previousPose).map { current, previous in
+                let movement = hypot(current.x - previous.x, current.y - previous.y)
+                // Suppress tiny landmark shimmer while allowing quick dance gestures
+                // to catch up without the heavy lag of fixed smoothing.
+                let alpha = min(max(0.28 + movement * 4.5, 0.28), 0.85)
+                return CGPoint(
+                    x: previous.x + (current.x - previous.x) * alpha,
+                    y: previous.y + (current.y - previous.y) * alpha
+                )
+            }
+        }
+        smoothedKeypoints = stabilized
+        return stabilized
+    }
+
+    private func stabilizeWorld(_ poses: [[PosePoint3D]]) -> [[PosePoint3D]] {
+        guard poses.count == smoothedWorldKeypoints.count else {
+            smoothedWorldKeypoints = poses
+            return poses
+        }
+
+        let stabilized = zip(poses, smoothedWorldKeypoints).map { currentPose, previousPose in
+            guard currentPose.count == previousPose.count else { return currentPose }
+            return zip(currentPose, previousPose).map { current, previous in
+                let dx = current.x - previous.x
+                let dy = current.y - previous.y
+                let dz = current.z - previous.z
+                let movement = sqrt(dx * dx + dy * dy + dz * dz)
+                let alpha = min(max(0.30 + movement * 8, 0.30), 0.88)
+                return PosePoint3D(
+                    x: previous.x + dx * alpha,
+                    y: previous.y + dy * alpha,
+                    z: previous.z + dz * alpha
+                )
+            }
+        }
+        smoothedWorldKeypoints = stabilized
+        return stabilized
     }
 }
 
@@ -140,12 +193,15 @@ extension PoseDetector: PoseLandmarkerLiveStreamDelegate {
             })
         }
         
+        let stablePoses = stabilize(allPoses)
+        let stableWorldPoses = stabilizeWorld(allWorldPoses)
+
         DispatchQueue.main.async {
-            self.keypoints = allPoses
-            self.worldKeypoints = allWorldPoses
+            self.keypoints = stablePoses
+            self.worldKeypoints = stableWorldPoses
             if self.isRecording {
-                self.recordedKeypoints.append(allPoses)
-                self.recordedWorldKeypoints.append(allWorldPoses)
+                self.recordedKeypoints.append(stablePoses)
+                self.recordedWorldKeypoints.append(stableWorldPoses)
                 let startedAt = self.recordingStartedAt ?? ProcessInfo.processInfo.systemUptime
                 self.recordedFrameTimes.append(ProcessInfo.processInfo.systemUptime - startedAt)
             }
