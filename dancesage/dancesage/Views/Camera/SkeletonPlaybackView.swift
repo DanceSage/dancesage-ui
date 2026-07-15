@@ -58,7 +58,6 @@ struct SkeletonPlaybackView: View {
     @State private var videoAspect: CGFloat = 9.0 / 16.0
     @State private var videoDuration: Double = 0
     @State private var playbackTime: Double = 0
-    @State private var skeletonStyle: SkeletonVisualStyle = .glow
     @Environment(\.dismiss) var dismiss
     let timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
 
@@ -124,8 +123,7 @@ struct SkeletonPlaybackView: View {
                 SkeletonOverlay(
                     keypoints: keypoints[currentFrame],
                     useVisionIndices: useVisionIndices,
-                    videoAspect: videoAspect,
-                    style: skeletonStyle
+                    videoAspect: videoAspect
                 )
                 .ignoresSafeArea()
             }
@@ -193,31 +191,6 @@ struct SkeletonPlaybackView: View {
                         }
                     }
                     .padding(.horizontal, 48)
-                }
-
-                if displayMode != .video {
-                    HStack(spacing: 8) {
-                        ForEach(SkeletonVisualStyle.allCases) { style in
-                            Button {
-                                skeletonStyle = style
-                            } label: {
-                                Label(
-                                    style.rawValue,
-                                    systemImage: style == .glow ? "sparkles" : "face.smiling"
-                                )
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 9)
-                                .background(
-                                    skeletonStyle == style ? Color.purple : Color.black.opacity(0.72),
-                                    in: Capsule()
-                                )
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 58)
-                    .padding(.top, 8)
                 }
 
                 if isProcessing {
