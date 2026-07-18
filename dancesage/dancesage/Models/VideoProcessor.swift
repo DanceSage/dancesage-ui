@@ -15,14 +15,6 @@ class VideoProcessor: ObservableObject {
     private var isPartnerMode: Bool = false
     private let processingQueue = DispatchQueue(label: "com.dancesage.video-processing", qos: .utility)
     
-    // Apple Vision joint order — 17 points — partner mode
-    private let jointOrder: [VNHumanBodyPoseObservation.JointName] = [
-        .nose, .leftEye, .rightEye, .leftEar, .rightEar,
-        .leftShoulder, .rightShoulder, .leftElbow, .rightElbow,
-        .leftWrist, .rightWrist, .leftHip, .rightHip,
-        .leftKnee, .rightKnee, .leftAnkle, .rightAnkle
-    ]
-    
     init() {
         setupMediaPipe()
     }
@@ -94,6 +86,7 @@ class VideoProcessor: ObservableObject {
         var pendingKeypoints: [[[CGPoint]]] = []
         var pendingFrameTimes: [Double] = []
         var lastPublishTime = 0.0
+        let partnerTracker = PartnerPoseTracker()
 
         func publishPending(progress frameTime: Double, finished: Bool = false) {
             guard !pendingFrameTimes.isEmpty || finished else { return }
@@ -123,7 +116,7 @@ class VideoProcessor: ObservableObject {
                 
                 let poses: [[CGPoint]]?
                 if partnerMode {
-                    poses = detectPoseVision(in: cgImage)
+                    poses = detectPoseVision(in: cgImage, tracker: partnerTracker)
                 } else {
                     poses = detectPoseMediaPipe(in: cgImage)
                 }
@@ -176,32 +169,17 @@ class VideoProcessor: ObservableObject {
     }
     
     // MARK: - Apple Vision — Partner (17 points, multi-person)
-    private func detectPoseVision(in cgImage: CGImage) -> [[CGPoint]]? {
+    private func detectPoseVision(
+        in cgImage: CGImage,
+        tracker: PartnerPoseTracker
+    ) -> [[CGPoint]]? {
         let request = VNDetectHumanBodyPoseRequest()
         let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:])
         
         do {
             try handler.perform([request])
             
-            guard let observations = request.results, !observations.isEmpty else { return nil }
-            
-            var allPeople: [[CGPoint]] = observations.map { observation in
-                jointOrder.map { joint in
-                    if let point = try? observation.recognizedPoint(joint), point.confidence > 0.1 {
-                        return CGPoint(x: point.location.x, y: 1.0 - point.location.y)
-                    }
-                    return CGPoint(x: -1, y: -1)
-                }
-            }
-            
-            // Sort by hip X — leftmost person first
-            allPeople.sort { a, b in
-                let hipA = a.count > 11 ? a[11].x : 0.5
-                let hipB = b.count > 11 ? b[11].x : 0.5
-                return hipA < hipB
-            }
-            
-            return allPeople
+            return tracker.update(with: request.results ?? [])
             
         } catch {
             print("❌ Vision error: \(error)")

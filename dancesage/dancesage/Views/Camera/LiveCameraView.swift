@@ -111,6 +111,7 @@ struct LiveCameraView: UIViewRepresentable {
             onRecordingFinished: @escaping (URL) -> Void,
             onError: @escaping (String) -> Void
         ) {
+            let modeChanged = self.isPartnerMode != isPartnerMode
             self.isPartnerMode = isPartnerMode
             self.onRecordingStarted = onRecordingStarted
             self.onRecordingFinished = onRecordingFinished
@@ -118,6 +119,7 @@ struct LiveCameraView: UIViewRepresentable {
 
             sessionQueue.async { [weak self] in
                 guard let self else { return }
+                if modeChanged { self.visionDetector.resetTracking() }
                 self.desiredPosition = position
                 self.recordingRequested = recordingRequested
                 if self.configured, position != self.currentPosition, !self.movieOutput.isRecording {
@@ -198,6 +200,7 @@ struct LiveCameraView: UIViewRepresentable {
         }
 
         private func replaceVideoInput(position: AVCaptureDevice.Position) {
+            visionDetector.resetTracking()
             let previousInput = session.inputs
                 .compactMap { $0 as? AVCaptureDeviceInput }
                 .first { $0.device.hasMediaType(.video) }
