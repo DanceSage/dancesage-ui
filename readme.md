@@ -73,3 +73,22 @@ AI-powered dance learning and choreography app for Latin dances (Salsa, Bachata,
 4. Backend API for keypoint storage
 5. Basic move comparison & feedback
 6. (Future) AI choreography & partner detection
+# DanceSage iOS
+
+DanceSage has two primary paths:
+
+- **Find a Dance Tonight** searches the DanceSage API for date-specific salsa,
+  bachata, and Latin events. Every result links to the source used to verify it.
+- **Practice & Improve** keeps the existing live recording, video import, skeleton
+  processing, playback, and local recording library.
+
+Users can bookmark an event locally. DanceSage stores watched events on the
+iPhone and schedules a reminder two hours before the event. Production
+organizer-change and cancellation alerts still require a server-side scheduled
+monitor plus APNs; the app does not claim that a local reminder provides this.
+
+## API configuration
+
+Debug builds default to `http://127.0.0.1:8000`. For device and release builds,
+set the Xcode build setting `DANCE_SAGE_API_BASE_URL` to the HTTPS base URL of
+the deployed `dancesage-api` service. API keys belong only on the server.
