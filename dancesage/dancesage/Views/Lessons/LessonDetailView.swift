@@ -5,6 +5,7 @@ struct LessonDetailView: View {
     let lesson: Lesson
 
     @State private var showReference = false
+    @State private var showGhostPractice = false
     @State private var showAttemptPicker = false
     @State private var resultBox: ComparisonResultBox?
     @State private var comparedAttempt: DanceRecording?
@@ -35,12 +36,19 @@ struct LessonDetailView: View {
                 }
 
                 Button {
+                    showGhostPractice = true
+                } label: {
+                    Label("Dance With the Teacher", systemImage: "figure.2")
+                        .font(.body.weight(.semibold))
+                }
+
+                Button {
                     showAttemptPicker = true
                 } label: {
-                    Label("Compare My Attempt", systemImage: "figure.dance")
+                    Label("Compare a Saved Recording", systemImage: "figure.dance")
                 }
             } footer: {
-                Text("Record your attempt from the home screen first — full body in frame, same song if you can — then pick it here.")
+                Text("Dance With the Teacher shows the teacher's skeleton over your live camera — follow it, and you're scored the moment it ends. Or compare any recording you saved earlier.")
             }
         }
         .navigationTitle(lesson.title)
@@ -55,6 +63,9 @@ struct LessonDetailView: View {
                 frameTimes: lesson.recording.effectiveFrameTimes,
                 recordingMode: lesson.recording.mode ?? .styling
             )
+        }
+        .fullScreenCover(isPresented: $showGhostPractice) {
+            GhostPracticeView(lesson: lesson)
         }
         .sheet(isPresented: $showAttemptPicker) {
             AttemptPickerView { attempt in
