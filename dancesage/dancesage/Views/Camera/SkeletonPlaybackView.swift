@@ -63,8 +63,16 @@ struct SkeletonPlaybackView: View {
     @State private var exportedVideo: ExportedVideo?
     @State private var exportError = ""
     @State private var lessonAddedName = ""
+    @StateObject private var beatDetector = BeatDetector()
+    @State private var detectedBeats: [Double] = []
+    @State private var detectedBPM: Double = 0
     @Environment(\.dismiss) var dismiss
     let timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
+
+    /// Live recordings arrive without beats; detect them from the captured
+    /// audio here so playback, saving, and lessons all carry a real count.
+    private var effectiveBeats: [Double] { beats.isEmpty ? detectedBeats : beats }
+    private var effectiveBPM: Double { bpm > 0 ? bpm : detectedBPM }
 
     private var effectiveFPS: Double { max(fps, 1) }
     private var effectiveFrameTimes: [Double] {
@@ -97,10 +105,10 @@ struct SkeletonPlaybackView: View {
     
     // Find which beat we're on (1-8 in the salsa count)
     var beatNumber: Int {
-        guard !beats.isEmpty else { return 0 }
+        guard !effectiveBeats.isEmpty else { return 0 }
         
         // Find how many beats have passed
-        let beatsPasssed = beats.filter { $0 <= currentTime }.count
+        let beatsPasssed = effectiveBeats.filter { $0 <= currentTime }.count
         
         // Salsa counts 1-8, then repeats
         return beatsPasssed > 0 ? ((beatsPasssed - 1) % 8) + 1 : 0
@@ -108,10 +116,10 @@ struct SkeletonPlaybackView: View {
     
     // Check if we just hit a beat
     var isOnBeat: Bool {
-        guard !beats.isEmpty else { return false }
+        guard !effectiveBeats.isEmpty else { return false }
         
         let tolerance = 0.05  // 50ms tolerance
-        return beats.contains { abs($0 - currentTime) < tolerance }
+        return effectiveBeats.contains { abs($0 - currentTime) < tolerance }
     }
     
     var body: some View {
@@ -294,7 +302,7 @@ struct SkeletonPlaybackView: View {
                         .frame(height: 60)  // Space for X button
                     
                     // Beat counter
-                    if !beats.isEmpty {
+                    if !effectiveBeats.isEmpty {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Beat")
                                 .font(.caption)
@@ -302,8 +310,8 @@ struct SkeletonPlaybackView: View {
                             Text("\(beatNumber)")
                                 .font(.system(size: 48, weight: .bold, design: .rounded))
                                 .foregroundColor(.yellow)
-                            if bpm > 0 {
-                                Text("\(Int(bpm)) BPM")
+                            if effectiveBPM > 0 {
+                                Text("\(Int(effectiveBPM)) BPM")
                                     .font(.caption)
                                     .foregroundColor(.purple)
                             }
@@ -420,6 +428,13 @@ struct SkeletonPlaybackView: View {
             setupAudioPlayer()
             loadVideoAspect()
             if videoURL == nil { displayMode = .skeleton }
+            // Live recordings arrive beat-less; detect from the captured audio.
+            if beats.isEmpty, let videoURL {
+                beatDetector.detectBeats(from: videoURL) { found, foundBPM in
+                    detectedBeats = found
+                    detectedBPM = foundBPM
+                }
+            }
         }
         .onDisappear {
             audioPlayer?.pause()
@@ -467,8 +482,8 @@ struct SkeletonPlaybackView: View {
             mode: recordingMode,
             fps: effectiveFPS,
             frameTimes: effectiveFrameTimes,
-            beats: beats,
-            bpm: bpm,
+            beats: effectiveBeats,
+            bpm: effectiveBPM,
             hasVideo: false,
             cameraPosition: cameraPosition
         )
@@ -553,8 +568,8 @@ struct SkeletonPlaybackView: View {
             mode: recordingMode,
             fps: effectiveFPS,
             frameTimes: effectiveFrameTimes,
-            beats: beats,
-            bpm: bpm,
+            beats: effectiveBeats,
+            bpm: effectiveBPM,
             hasVideo: videoURL != nil,
             cameraPosition: cameraPosition
         )

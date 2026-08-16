@@ -59,27 +59,69 @@ enum LessonComparator {
     // MARK: - Public entry
 
     static func compare(reference: DanceRecording, attempt: DanceRecording) throws -> Result {
-        let sampleTimes = alignedSampleTimes(reference: reference, attempt: attempt)
-        guard sampleTimes.count >= 4 else { throw ComparatorError.notEnoughData }
+        // Candidate time alignments. Beats are used when present, but never
+        // trusted blindly: dynamic time warping aligns by the movement itself,
+        // and whichever alignment fits the dancing best wins. Bad or missing
+        // beat detection can therefore no longer poison the match.
+        var candidates: [(times: [(ref: Double, att: Double, count: Int)], byBeats: Bool, mirrored: Bool, lagTolerant: Bool)] = []
 
-        let normal = evaluate(reference: reference, attempt: attempt, times: sampleTimes, mirrored: false)
-        let mirrored = evaluate(reference: reference, attempt: attempt, times: sampleTimes, mirrored: true)
-
-        guard let best = [normal, mirrored]
-            .compactMap({ $0 })
-            .min(by: { $0.meanDeviation < $1.meanDeviation }) else {
-            throw ComparatorError.notEnoughData
+        let beatTimes = beatSampleTimes(reference: reference, attempt: attempt)
+        let uniformTimes = uniformSampleTimes(reference: reference, attempt: attempt)
+        for flag in [false, true] {
+            if let beatTimes { candidates.append((beatTimes, true, flag, true)) }
+            candidates.append((uniformTimes, false, flag, true))
+            // DTW already flexes time; giving it the reaction-lag window too
+            // would let temporal freedom launder real spatial errors.
+            if let dtwTimes = dtwSampleTimes(reference: reference, attempt: attempt, mirrored: flag) {
+                candidates.append((dtwTimes, false, flag, false))
+            }
         }
 
-        let regions = best.regions
+        var bestRigid: (evaluation: Evaluation, byBeats: Bool)?
+        var bestWarped: (evaluation: Evaluation, byBeats: Bool)?
+        for candidate in candidates where candidate.times.count >= 4 {
+            guard let evaluation = evaluate(
+                reference: reference,
+                attempt: attempt,
+                times: candidate.times,
+                mirrored: candidate.mirrored,
+                lagTolerant: candidate.lagTolerant
+            ) else { continue }
+            if candidate.lagTolerant {
+                if bestRigid == nil || evaluation.meanDeviation < bestRigid!.evaluation.meanDeviation {
+                    bestRigid = (evaluation, candidate.byBeats)
+                }
+            } else {
+                if bestWarped == nil || evaluation.meanDeviation < bestWarped!.evaluation.meanDeviation {
+                    bestWarped = (evaluation, candidate.byBeats)
+                }
+            }
+        }
+
+        // DTW is a rescue for broken clocks (bad beats, late starts), not a
+        // competitor: on a repetitive dance it can warp a real spatial error
+        // away. It wins only when rigid alignment has clearly failed.
+        let dtwRescueMargin = 6.0
+        var winner: (evaluation: Evaluation, byBeats: Bool)?
+        switch (bestRigid, bestWarped) {
+        case let (rigid?, warped?):
+            winner = warped.evaluation.meanDeviation + dtwRescueMargin < rigid.evaluation.meanDeviation
+                ? warped : rigid
+        case let (rigid?, nil): winner = rigid
+        case let (nil, warped?): winner = warped
+        case (nil, nil): winner = nil
+        }
+
+        guard let winner else { throw ComparatorError.notEnoughData }
+        let regions = winner.evaluation.regions
         let cues = makeCues(from: regions)
         return Result(
-            overallScore: score(fromDeviation: best.meanDeviation),
+            overallScore: score(fromDeviation: winner.evaluation.meanDeviation),
             regions: regions,
             cues: cues,
-            samplesCompared: best.samples,
-            alignedByBeats: usesBeats(reference: reference, attempt: attempt),
-            mirrored: best.isMirrored
+            samplesCompared: winner.evaluation.samples,
+            alignedByBeats: winner.byBeats,
+            mirrored: winner.evaluation.isMirrored
         )
     }
 
@@ -89,36 +131,160 @@ enum LessonComparator {
         (reference.beats?.count ?? 0) >= 4 && (attempt.beats?.count ?? 0) >= 4
     }
 
-    /// Pairs of (reference time, attempt time, count number) to sample poses at.
-    private static func alignedSampleTimes(
+    /// Beat-paired sample times, when both recordings carry usable beats.
+    private static func beatSampleTimes(
+        reference: DanceRecording,
+        attempt: DanceRecording
+    ) -> [(ref: Double, att: Double, count: Int)]? {
+        guard let refBeats = reference.beats, let attBeats = attempt.beats,
+              refBeats.count >= 4, attBeats.count >= 4 else { return nil }
+        let n = min(refBeats.count, attBeats.count)
+        var samples: [(Double, Double, Int)] = []
+        for i in 0..<n {
+            samples.append((refBeats[i], attBeats[i], i % 8 + 1))
+            // A midpoint between counts keeps transitions honest, not just poses.
+            if i + 1 < n {
+                samples.append((
+                    (refBeats[i] + refBeats[i + 1]) / 2,
+                    (attBeats[i] + attBeats[i + 1]) / 2,
+                    i % 8 + 1
+                ))
+            }
+        }
+        return samples
+    }
+
+    /// Uniform stretch of the attempt onto the reference over normalized time.
+    private static func uniformSampleTimes(
         reference: DanceRecording,
         attempt: DanceRecording
     ) -> [(ref: Double, att: Double, count: Int)] {
-        if let refBeats = reference.beats, let attBeats = attempt.beats,
-           refBeats.count >= 4, attBeats.count >= 4 {
-            let n = min(refBeats.count, attBeats.count)
-            var samples: [(Double, Double, Int)] = []
-            for i in 0..<n {
-                samples.append((refBeats[i], attBeats[i], i % 8 + 1))
-                // A midpoint between counts keeps transitions honest, not just poses.
-                if i + 1 < n {
-                    samples.append((
-                        (refBeats[i] + refBeats[i + 1]) / 2,
-                        (attBeats[i] + attBeats[i + 1]) / 2,
-                        i % 8 + 1
-                    ))
-                }
-            }
-            return samples
-        }
-
-        // Fallback: stretch the attempt onto the reference over normalized time.
         let refDuration = reference.effectiveFrameTimes.last ?? 0
         let attDuration = attempt.effectiveFrameTimes.last ?? 0
         guard refDuration > 0, attDuration > 0 else { return [] }
-        return (0..<16).map { i in
-            let t = Double(i) / 15.0
-            return (t * refDuration, t * attDuration, i % 8 + 1)
+        return (0..<24).map { i in
+            let t = Double(i) / 23.0
+            return (t * refDuration, t * attDuration, countLabel(forRefTime: t * refDuration, reference: reference, fallbackIndex: i))
+        }
+    }
+
+    /// Count number for a reference time — from the reference's beats when it
+    /// has them, otherwise a rolling index.
+    private static func countLabel(forRefTime time: Double, reference: DanceRecording, fallbackIndex: Int) -> Int {
+        if let refBeats = reference.beats, refBeats.count >= 2 {
+            let passed = refBeats.filter { $0 <= time }.count
+            return passed > 0 ? (passed - 1) % 8 + 1 : 1
+        }
+        return fallbackIndex % 8 + 1
+    }
+
+    // MARK: - Dynamic time warping
+
+    /// Aligns the two dances by the movement itself: joint-angle feature vectors
+    /// sampled along each recording, warped with a banded DTW. Works with wrong
+    /// beats, missing beats, late starts, and tempo drift.
+    private static func dtwSampleTimes(
+        reference: DanceRecording,
+        attempt: DanceRecording,
+        mirrored: Bool
+    ) -> [(ref: Double, att: Double, count: Int)]? {
+        let step = 0.15
+        let refDuration = reference.effectiveFrameTimes.last ?? 0
+        let attDuration = attempt.effectiveFrameTimes.last ?? 0
+        guard refDuration > step * 4, attDuration > step * 4 else { return nil }
+
+        let refTimes = stride(from: 0.0, through: min(refDuration, 60), by: step).map { $0 }
+        let attTimes = stride(from: 0.0, through: min(attDuration, 60), by: step).map { $0 }
+        let refFeatures = angleFeatures(of: reference, at: refTimes, mirrored: false)
+        let attFeatures = angleFeatures(of: attempt, at: attTimes, mirrored: mirrored)
+
+        let n = refTimes.count
+        let m = attTimes.count
+        guard n >= 4, m >= 4 else { return nil }
+
+        func cost(_ i: Int, _ j: Int) -> Double {
+            var total = 0.0
+            var count = 0
+            for k in 0..<angleSpecs.count {
+                guard let a = refFeatures[i][k], let b = attFeatures[j][k] else { continue }
+                total += abs(a - b)
+                count += 1
+            }
+            return count > 0 ? total / Double(count) : 90
+        }
+
+        // Banded DP so the warp can't degenerate.
+        let band = max(12, Int(0.35 * Double(max(n, m))))
+        let infinity = Double.greatestFiniteMagnitude
+        var dp = [[Double]](repeating: [Double](repeating: infinity, count: m), count: n)
+        var from = [[Int8]](repeating: [Int8](repeating: 0, count: m), count: n) // 1 diag, 2 up, 3 left
+        for i in 0..<n {
+            let center = i * m / n
+            for j in max(0, center - band)...min(m - 1, center + band) {
+                let c = cost(i, j)
+                if i == 0 && j == 0 { dp[0][0] = c; continue }
+                var bestPrev = infinity
+                var move: Int8 = 0
+                if i > 0, j > 0, dp[i-1][j-1] < bestPrev { bestPrev = dp[i-1][j-1]; move = 1 }
+                if i > 0, dp[i-1][j] < bestPrev { bestPrev = dp[i-1][j]; move = 2 }
+                if j > 0, dp[i][j-1] < bestPrev { bestPrev = dp[i][j-1]; move = 3 }
+                guard bestPrev < infinity else { continue }
+                dp[i][j] = bestPrev + c
+                from[i][j] = move
+            }
+        }
+        guard dp[n-1][m-1] < infinity else { return nil }
+
+        // Backtrack the warp path.
+        var path: [(Int, Int)] = []
+        var i = n - 1, j = m - 1
+        while true {
+            path.append((i, j))
+            if i == 0 && j == 0 { break }
+            switch from[i][j] {
+            case 1: i -= 1; j -= 1
+            case 2: i -= 1
+            case 3: j -= 1
+            default: return nil // fell off the band
+            }
+        }
+        path.reverse()
+
+        // ~28 evenly spaced pairs along the path.
+        let targetCount = 28
+        let strideLength = max(1, path.count / targetCount)
+        var samples: [(Double, Double, Int)] = []
+        for (position, pair) in path.enumerated()
+        where position % strideLength == 0 || position == path.count - 1 {
+            samples.append((
+                refTimes[pair.0],
+                attTimes[pair.1],
+                countLabel(forRefTime: refTimes[pair.0], reference: reference, fallbackIndex: samples.count)
+            ))
+        }
+        return samples.count >= 4 ? samples : nil
+    }
+
+    /// The eight comparator angles at each sample time; nil where the camera
+    /// couldn't see a joint.
+    private static func angleFeatures(
+        of recording: DanceRecording,
+        at times: [Double],
+        mirrored: Bool
+    ) -> [[Double?]] {
+        times.map { time in
+            guard let index = frameIndex(at: time, in: recording),
+                  let pose = recording.keypoints[safe: index]?.first,
+                  pose.count == 33 else {
+                return [Double?](repeating: nil, count: angleSpecs.count)
+            }
+            return angleSpecs.map { spec -> Double? in
+                let a = mirrored ? mirrorMap[spec.a]! : spec.a
+                let v = mirrored ? mirrorMap[spec.vertex]! : spec.vertex
+                let c = mirrored ? mirrorMap[spec.c]! : spec.c
+                guard isValid(pose[a]), isValid(pose[v]), isValid(pose[c]) else { return nil }
+                return angle(at: pose[v], from: pose[a], to: pose[c])
+            }
         }
     }
 
@@ -210,7 +376,8 @@ enum LessonComparator {
         reference: DanceRecording,
         attempt: DanceRecording,
         times: [(ref: Double, att: Double, count: Int)],
-        mirrored: Bool
+        mirrored: Bool,
+        lagTolerant: Bool = true
     ) -> Evaluation? {
         struct Accumulator {
             var absolute: [Double] = []
@@ -222,7 +389,7 @@ enum LessonComparator {
 
         // A student following a reference reacts a beat-fraction late; grade the
         // best match within a small window instead of punishing reaction time.
-        let lagOffsets: [Double] = [0, 0.15, 0.3, 0.45]
+        let lagOffsets: [Double] = lagTolerant ? [0, 0.15, 0.3, 0.45] : [0]
 
         for sample in times {
             guard let refIndex = frameIndex(at: sample.ref, in: reference),
