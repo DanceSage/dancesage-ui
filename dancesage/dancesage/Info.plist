@@ -4,5 +4,41 @@
 <dict>
 	<key>DanceSageAPIBaseURL</key>
 	<string>$(DANCE_SAGE_API_BASE_URL)</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>DanceSage Lesson</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.dancesage.lesson</string>
+			</array>
+		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.dancesage.lesson</string>
+			<key>UTTypeDescription</key>
+			<string>DanceSage Lesson</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.content</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>dancesage</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>

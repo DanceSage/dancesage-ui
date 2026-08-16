@@ -44,19 +44,29 @@ struct RecordingsListView: View {
                                 }
                                 .buttonStyle(.plain)
 
-                                // Shares the original recording. Skeleton exports live in the
-                                // playback screen, where the render options are.
-                                if let videoURL = RecordingStore.shared.existingVideoURL(for: recording) {
-                                    Button {
-                                        exportedVideo = ExportedVideo(url: videoURL)
-                                    } label: {
-                                        Image(systemName: "square.and.arrow.up")
-                                            .font(.system(size: 18))
-                                            .foregroundColor(.blue)
-                                            .padding(.leading, 12)
+                                // Share menu: the original video, or the recording as a
+                                // teachable lesson file. Skeleton exports live in playback,
+                                // where the render options are.
+                                Menu {
+                                    if let videoURL = RecordingStore.shared.existingVideoURL(for: recording) {
+                                        Button {
+                                            exportedVideo = ExportedVideo(url: videoURL)
+                                        } label: {
+                                            Label("Share Video", systemImage: "video")
+                                        }
                                     }
-                                    .buttonStyle(.borderless)
+                                    Button {
+                                        shareAsLesson(recording)
+                                    } label: {
+                                        Label("Share as Lesson", systemImage: "graduationcap")
+                                    }
+                                } label: {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(.blue)
+                                        .padding(.leading, 12)
                                 }
+                                .buttonStyle(.borderless)
                             }
                         }
                         .onDelete(perform: deleteRecording)
@@ -111,6 +121,19 @@ struct RecordingsListView: View {
         }
     }
     
+    func shareAsLesson(_ recording: DanceRecording) {
+        do {
+            let url = try LessonStore.shared.exportLessonFile(
+                recording: recording,
+                teacherName: UIDevice.current.name,
+                note: ""
+            )
+            exportedVideo = ExportedVideo(url: url)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func deleteRecording(at offsets: IndexSet) {
         do {
             recordings = try RecordingStore.shared.delete(at: offsets)

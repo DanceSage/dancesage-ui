@@ -38,15 +38,17 @@ struct DanceSageHomeView: View {
                         }
                         .foregroundStyle(.white)
 
-                        NavigationLink {
-                            DanceDiscoveryView()
-                        } label: {
-                            HomePathCard(
-                                title: "Find a Dance Tonight",
-                                subtitle: "Source-backed salsa, bachata and Latin events near you",
-                                icon: "location.fill",
-                                color: .orange
-                            )
+                        if AppConfig.discoveryEnabled {
+                            NavigationLink {
+                                DanceDiscoveryView()
+                            } label: {
+                                HomePathCard(
+                                    title: "Find a Dance Tonight",
+                                    subtitle: "Source-backed salsa, bachata and Latin events near you",
+                                    icon: "location.fill",
+                                    color: .orange
+                                )
+                            }
                         }
 
                         NavigationLink {
@@ -61,14 +63,27 @@ struct DanceSageHomeView: View {
                         }
 
                         NavigationLink {
-                            WatchedEventsView()
+                            LessonsListView()
                         } label: {
-                            Label("My watched events", systemImage: "bookmark.fill")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.82))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 15)
-                                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+                            HomePathCard(
+                                title: "Lessons",
+                                subtitle: "Practice moves your teacher shared and hear how close you are",
+                                icon: "graduationcap.fill",
+                                color: .orange
+                            )
+                        }
+
+                        if AppConfig.discoveryEnabled {
+                            NavigationLink {
+                                WatchedEventsView()
+                            } label: {
+                                Label("My watched events", systemImage: "bookmark.fill")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.white.opacity(0.82))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 15)
+                                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+                            }
                         }
                     }
                     .padding(.horizontal, 24)
