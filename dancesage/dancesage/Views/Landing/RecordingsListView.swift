@@ -5,6 +5,7 @@ struct RecordingsListView: View {
     @State private var selectedRecording: DanceRecording?
     @State private var errorMessage = ""
     @State private var exportedVideo: ExportedVideo?
+    @State private var lessonAddedName = ""
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
@@ -56,9 +57,14 @@ struct RecordingsListView: View {
                                         }
                                     }
                                     Button {
+                                        addToMyLessons(recording)
+                                    } label: {
+                                        Label("Add to My Lessons", systemImage: "graduationcap")
+                                    }
+                                    Button {
                                         shareAsLesson(recording)
                                     } label: {
-                                        Label("Share as Lesson", systemImage: "graduationcap")
+                                        Label("Send as Lesson File", systemImage: "square.and.arrow.up.on.square")
                                     }
                                 } label: {
                                     Image(systemName: "square.and.arrow.up")
@@ -101,6 +107,14 @@ struct RecordingsListView: View {
             .sheet(item: $exportedVideo) { export in
                 ActivityView(url: export.url)
             }
+            .alert("Added to Lessons", isPresented: Binding(
+                get: { !lessonAddedName.isEmpty },
+                set: { if !$0 { lessonAddedName = "" } }
+            )) {
+                Button("OK", role: .cancel) { lessonAddedName = "" }
+            } message: {
+                Text("“\(lessonAddedName)” is now a lesson. Open Lessons from the home screen, then compare another recording against it.")
+            }
             .alert("Recording Error", isPresented: Binding(
                 get: { !errorMessage.isEmpty },
                 set: { if !$0 { errorMessage = "" } }
@@ -121,6 +135,15 @@ struct RecordingsListView: View {
         }
     }
     
+    func addToMyLessons(_ recording: DanceRecording) {
+        do {
+            _ = try LessonStore.shared.addLesson(recording: recording, teacherName: "")
+            lessonAddedName = recording.name
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func shareAsLesson(_ recording: DanceRecording) {
         do {
             let url = try LessonStore.shared.exportLessonFile(

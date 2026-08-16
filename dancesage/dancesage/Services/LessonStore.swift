@@ -30,6 +30,17 @@ final class LessonStore {
         return lessons.sorted { $0.createdAt > $1.createdAt }
     }
 
+    /// Adds one of the dancer's own recordings straight into the lesson library —
+    /// the one-phone path, no file sharing involved.
+    @discardableResult
+    func addLesson(recording: DanceRecording, teacherName: String) throws -> Lesson {
+        let lesson = Lesson(teacherName: teacherName, note: "", recording: recording)
+        var lessons = try load()
+        lessons.append(lesson)
+        try save(lessons)
+        return lesson
+    }
+
     /// Reads a shared `.dancesage` file and adds it to the library.
     /// Re-importing the same lesson replaces the stored copy rather than duplicating it.
     @discardableResult
