@@ -179,7 +179,14 @@ enum LessonComparator {
         point.x >= 0 && point.y >= 0
     }
 
-    private static func angle(at vertex: CGPoint, from a: CGPoint, to c: CGPoint) -> Double? {
+    /// Portrait aspect correction — angles measured in raw normalized
+    /// coordinates are warped because x- and y-units differ physically.
+    private static let portraitAspect: CGFloat = 9.0 / 16.0
+
+    private static func angle(at rawVertex: CGPoint, from rawA: CGPoint, to rawC: CGPoint) -> Double? {
+        let vertex = CGPoint(x: rawVertex.x * portraitAspect, y: rawVertex.y)
+        let a = CGPoint(x: rawA.x * portraitAspect, y: rawA.y)
+        let c = CGPoint(x: rawC.x * portraitAspect, y: rawC.y)
         let v1 = CGPoint(x: a.x - vertex.x, y: a.y - vertex.y)
         let v2 = CGPoint(x: c.x - vertex.x, y: c.y - vertex.y)
         let len1 = (v1.x * v1.x + v1.y * v1.y).squareRoot()
@@ -213,12 +220,42 @@ enum LessonComparator {
         var accumulators: [Region: Accumulator] = [:]
         var comparedSamples = 0
 
+        // A student following a reference reacts a beat-fraction late; grade the
+        // best match within a small window instead of punishing reaction time.
+        let lagOffsets: [Double] = [0, 0.15, 0.3, 0.45]
+
         for sample in times {
             guard let refIndex = frameIndex(at: sample.ref, in: reference),
-                  let attIndex = frameIndex(at: sample.att, in: attempt),
                   let refPose = reference.keypoints[safe: refIndex]?.first,
-                  let attPose = attempt.keypoints[safe: attIndex]?.first,
-                  refPose.count == 33, attPose.count == 33 else { continue }
+                  refPose.count == 33 else { continue }
+
+            var attPoseCandidate: [CGPoint]?
+            var bestMean = Double.greatestFiniteMagnitude
+            for offset in lagOffsets {
+                guard let index = frameIndex(at: sample.att + offset, in: attempt),
+                      let candidate = attempt.keypoints[safe: index]?.first,
+                      candidate.count == 33 else { continue }
+                var total = 0.0
+                var count = 0
+                for spec in angleSpecs {
+                    let a = mirrored ? mirrorMap[spec.a]! : spec.a
+                    let v = mirrored ? mirrorMap[spec.vertex]! : spec.vertex
+                    let c = mirrored ? mirrorMap[spec.c]! : spec.c
+                    guard isValid(refPose[spec.a]), isValid(refPose[spec.vertex]), isValid(refPose[spec.c]),
+                          isValid(candidate[a]), isValid(candidate[v]), isValid(candidate[c]),
+                          let refAngle = angle(at: refPose[spec.vertex], from: refPose[spec.a], to: refPose[spec.c]),
+                          let attAngle = angle(at: candidate[v], from: candidate[a], to: candidate[c]) else { continue }
+                    total += abs(attAngle - refAngle)
+                    count += 1
+                }
+                guard count > 0 else { continue }
+                let mean = total / Double(count)
+                if mean < bestMean {
+                    bestMean = mean
+                    attPoseCandidate = candidate
+                }
+            }
+            guard let attPose = attPoseCandidate else { continue }
 
             var sampleUsed = false
             for spec in angleSpecs {

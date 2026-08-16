@@ -24,6 +24,7 @@ struct GhostPracticeView: View {
     @State private var ghostTime: Double = 0
     @State private var ghostRunning = false
     @State private var resultBox: GhostResultBox?
+    @State private var liveErrorLevels: [Double]?
 
     @Environment(\.dismiss) private var dismiss
 
@@ -59,7 +60,7 @@ struct GhostPracticeView: View {
                 SkeletonOverlay(
                     keypoints: [student],
                     useVisionIndices: false,
-                    errorLevels: liveErrors(student: student)
+                    errorLevels: liveErrorLevels
                 )
                 .ignoresSafeArea()
             }
@@ -160,20 +161,67 @@ struct GhostPracticeView: View {
         }
     }
 
-    // MARK: - Pose assembly
+    // MARK: - Live grading
 
-    /// Grades the student's live pose against the ghost's current pose. The
-    /// student is aligned hip-to-hip with the ghost before measuring, so
-    /// standing in a different part of the frame doesn't read as error.
-    private func liveErrors(student: [CGPoint]) -> [Double]? {
-        guard let ghost = ghostPose() else { return nil }
-        let aligned = PoseFeedback.align(attempt: student, to: ghost, mirrored: false)
-        return PoseFeedback.jointErrors(reference: ghost, alignedAttempt: aligned)
+    /// Grades the student's live pose against the ghost: hip-anchored so where
+    /// you stand doesn't count as error, both mirror orientations tried, a small
+    /// reaction-lag window so following a third of a second behind isn't
+    /// punished, and temporally smoothed so colors don't flicker.
+    private func updateLiveErrors() {
+        guard let student = poseDetector.keypoints.first, student.count == 33 else {
+            liveErrorLevels = nil
+            return
+        }
+
+        // Candidate ghost poses: now and slightly in the past (reaction lag).
+        var ghostCandidates: [[CGPoint]] = []
+        let currentTime = ghostTime
+        for offset in [0.0, 0.2, 0.4] {
+            if let pose = ghostPose(at: max(0, currentTime - offset)) {
+                ghostCandidates.append(pose)
+            }
+            if !ghostRunning { break } // idle: only the opening pose exists
+        }
+        guard !ghostCandidates.isEmpty else {
+            liveErrorLevels = nil
+            return
+        }
+
+        let studentVariants = [student, PoseFeedback.mirrored(student)]
+
+        var best: [Double]?
+        var bestMean = Double.greatestFiniteMagnitude
+        for ghost in ghostCandidates {
+            for variant in studentVariants {
+                let aligned = PoseFeedback.align(attempt: variant, to: ghost, mirrored: false)
+                guard let errors = PoseFeedback.jointErrors(reference: ghost, alignedAttempt: aligned) else { continue }
+                let mean = errors.reduce(0, +) / Double(errors.count)
+                if mean < bestMean {
+                    bestMean = mean
+                    best = errors
+                }
+            }
+        }
+        guard let target = best else {
+            liveErrorLevels = nil
+            return
+        }
+
+        // Exponential smoothing keeps the colors readable rather than strobing.
+        if let previous = liveErrorLevels, previous.count == target.count {
+            liveErrorLevels = zip(previous, target).map { $0 * 0.7 + $1 * 0.3 }
+        } else {
+            liveErrorLevels = target
+        }
     }
 
     /// The teacher's pose at the current ghost clock — or the opening pose while
     /// idle, so the student can find their starting position before the count.
     private func ghostPose() -> [CGPoint]? {
+        ghostPose(at: ghostTime)
+    }
+
+    private func ghostPose(at time: Double) -> [CGPoint]? {
         let recording = lesson.recording
         guard let firstPose = recording.keypoints.first?.first else { return nil }
         guard ghostRunning else { return firstPose }
@@ -181,10 +229,10 @@ struct GhostPracticeView: View {
         let times = recording.effectiveFrameTimes
         var low = 0
         var high = times.count - 1
-        if ghostTime > times[0] {
+        if time > times[0] {
             while low < high {
                 let middle = (low + high + 1) / 2
-                if times[middle] <= ghostTime { low = middle } else { high = middle - 1 }
+                if times[middle] <= time { low = middle } else { high = middle - 1 }
             }
         }
         return recording.keypoints.indices.contains(low) ? recording.keypoints[low].first : firstPose
@@ -220,6 +268,7 @@ struct GhostPracticeView: View {
     }
 
     private func tick() {
+        updateLiveErrors()
         guard ghostRunning else { return }
         ghostTime += 1.0 / 60.0
         if ghostTime >= ghostDuration {
