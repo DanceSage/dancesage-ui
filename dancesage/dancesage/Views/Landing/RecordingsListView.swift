@@ -4,6 +4,7 @@ struct RecordingsListView: View {
     @State private var recordings: [DanceRecording] = []
     @State private var selectedRecording: DanceRecording?
     @State private var errorMessage = ""
+    @State private var exportedVideo: ExportedVideo?
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
@@ -21,23 +22,40 @@ struct RecordingsListView: View {
                 } else {
                     List {
                         ForEach(recordings) { recording in
-                            Button(action: {
-                                selectedRecording = recording
-                            }) {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text(recording.name)
-                                        .font(.headline)
-                                    HStack {
-                                        Image(systemName: recording.hasVideo == true ? "video.fill" : "figure.walk")
-                                            .foregroundColor(recording.hasVideo == true ? .blue : .secondary)
-                                        Text("\(recording.frameCount) frames")
-                                            .font(.caption)
-                                            .foregroundColor(.gray)
-                                        Spacer()
-                                        Text(recording.timestamp, style: .date)
-                                            .font(.caption)
-                                            .foregroundColor(.gray)
+                            HStack {
+                                Button(action: {
+                                    selectedRecording = recording
+                                }) {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text(recording.name)
+                                            .font(.headline)
+                                        HStack {
+                                            Image(systemName: recording.hasVideo == true ? "video.fill" : "figure.walk")
+                                                .foregroundColor(recording.hasVideo == true ? .blue : .secondary)
+                                            Text("\(recording.frameCount) frames")
+                                                .font(.caption)
+                                                .foregroundColor(.gray)
+                                            Spacer()
+                                            Text(recording.timestamp, style: .date)
+                                                .font(.caption)
+                                                .foregroundColor(.gray)
+                                        }
                                     }
+                                }
+                                .buttonStyle(.plain)
+
+                                // Shares the original recording. Skeleton exports live in the
+                                // playback screen, where the render options are.
+                                if let videoURL = RecordingStore.shared.existingVideoURL(for: recording) {
+                                    Button {
+                                        exportedVideo = ExportedVideo(url: videoURL)
+                                    } label: {
+                                        Image(systemName: "square.and.arrow.up")
+                                            .font(.system(size: 18))
+                                            .foregroundColor(.blue)
+                                            .padding(.leading, 12)
+                                    }
+                                    .buttonStyle(.borderless)
                                 }
                             }
                         }
@@ -69,6 +87,9 @@ struct RecordingsListView: View {
                     videoURL: RecordingStore.shared.existingVideoURL(for: recording),
                     cameraPosition: recording.cameraPosition
                 )
+            }
+            .sheet(item: $exportedVideo) { export in
+                ActivityView(url: export.url)
             }
             .alert("Recording Error", isPresented: Binding(
                 get: { !errorMessage.isEmpty },

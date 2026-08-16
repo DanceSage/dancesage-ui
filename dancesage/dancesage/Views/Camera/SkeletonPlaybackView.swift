@@ -58,6 +58,10 @@ struct SkeletonPlaybackView: View {
     @State private var videoAspect: CGFloat = 9.0 / 16.0
     @State private var videoDuration: Double = 0
     @State private var playbackTime: Double = 0
+    @State private var isExporting = false
+    @State private var exportProgress: Double = 0
+    @State private var exportedVideo: ExportedVideo?
+    @State private var exportError = ""
     @Environment(\.dismiss) var dismiss
     let timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
 
@@ -153,7 +157,63 @@ struct SkeletonPlaybackView: View {
                     }
                     
                     Spacer()
-                    
+
+                    // Share the original recording, or export it with the skeleton drawn in.
+                    if let videoURL {
+                        Menu {
+                            Button {
+                                exportedVideo = ExportedVideo(url: videoURL)
+                            } label: {
+                                Label("Share Video", systemImage: "video")
+                            }
+                            if !keypoints.isEmpty {
+                                Menu {
+                                    Button("Silent") {
+                                        exportSkeletonVideo(
+                                            from: videoURL,
+                                            content: .skeletonOverVideo,
+                                            includeAudio: false
+                                        )
+                                    }
+                                    Button("With Original Audio") {
+                                        exportSkeletonVideo(
+                                            from: videoURL,
+                                            content: .skeletonOverVideo,
+                                            includeAudio: true
+                                        )
+                                    }
+                                } label: {
+                                    Label("Skeleton + Video", systemImage: "figure.dance")
+                                }
+
+                                Menu {
+                                    Button("Silent") {
+                                        exportSkeletonVideo(
+                                            from: videoURL,
+                                            content: .skeletonOnly,
+                                            includeAudio: false
+                                        )
+                                    }
+                                    Button("With Original Audio") {
+                                        exportSkeletonVideo(
+                                            from: videoURL,
+                                            content: .skeletonOnly,
+                                            includeAudio: true
+                                        )
+                                    }
+                                } label: {
+                                    Label("Skeleton Only", systemImage: "figure.walk")
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "square.and.arrow.up.fill")
+                                .font(.system(size: 36))
+                                .foregroundColor(chromeColor)
+                                .padding()
+                        }
+                        .disabled(isProcessing || isExporting)
+                    }
+
                     // Save button (only show if allowSave is true)
                     if allowSave {
                         Button(action: {
@@ -302,7 +362,32 @@ struct SkeletonPlaybackView: View {
                     .padding(.bottom, 40)
                 }
             }
-            
+
+            if isExporting {
+                Color.black.opacity(0.65)
+                    .ignoresSafeArea()
+                VStack(spacing: 14) {
+                    ProgressView(value: exportProgress)
+                        .tint(.blue)
+                        .frame(width: 200)
+                    Text("Rendering skeleton video \(Int(exportProgress * 100))%")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+                .padding(28)
+                .background(Color.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 16))
+            }
+        }
+        .sheet(item: $exportedVideo) { export in
+            ActivityView(url: export.url)
+        }
+        .alert("Could Not Export", isPresented: Binding(
+            get: { !exportError.isEmpty },
+            set: { if !$0 { exportError = "" } }
+        )) {
+            Button("OK", role: .cancel) { exportError = "" }
+        } message: {
+            Text(exportError)
         }
         .onAppear {
             setupAudioPlayer()
@@ -345,6 +430,42 @@ struct SkeletonPlaybackView: View {
         }
     }
     
+    // MARK: - Export
+
+    func exportSkeletonVideo(
+        from url: URL,
+        content: VideoExporter.Content,
+        includeAudio: Bool
+    ) {
+        guard !isExporting else { return }
+        isPlaying = false
+        audioPlayer?.pause()
+        isExporting = true
+        exportProgress = 0
+
+        Task {
+            do {
+                let exported = try await VideoExporter.exportSkeletonVideo(
+                    videoURL: url,
+                    keypoints: keypoints,
+                    frameTimes: effectiveFrameTimes,
+                    useVisionIndices: useVisionIndices,
+                    name: recordingName.isEmpty ? "DanceSage" : recordingName,
+                    options: VideoExporter.Options(
+                        content: content,
+                        includeOriginalAudio: includeAudio
+                    ),
+                    progress: { exportProgress = $0 }
+                )
+                isExporting = false
+                exportedVideo = ExportedVideo(url: exported)
+            } catch {
+                isExporting = false
+                exportError = error.localizedDescription
+            }
+        }
+    }
+
     func saveRecording() {
         guard !recordingName.isEmpty else { return }
         
