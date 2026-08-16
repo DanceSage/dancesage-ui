@@ -5,7 +5,10 @@ struct ComparisonResultsView: View {
     let result: LessonComparator.Result
     let lessonName: String
     let attemptName: String
+    let reference: DanceRecording
+    let attempt: DanceRecording
 
+    @State private var showOverlay = false
     @Environment(\.dismiss) private var dismiss
 
     private var scoreColor: Color {
@@ -42,6 +45,18 @@ struct ComparisonResultsView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
+                }
+
+                Section {
+                    Button {
+                        CoachVoice.shared.stop()
+                        showOverlay = true
+                    } label: {
+                        Label("Watch Them Together", systemImage: "figure.2")
+                            .font(.body.weight(.semibold))
+                    }
+                } footer: {
+                    Text("Both skeletons on one screen, synced to the beat — teacher in cyan, you in gold.")
                 }
 
                 Section("What to work on") {
@@ -94,6 +109,13 @@ struct ComparisonResultsView: View {
             }
             .onDisappear {
                 CoachVoice.shared.stop()
+            }
+            .fullScreenCover(isPresented: $showOverlay) {
+                LessonOverlayView(
+                    reference: reference,
+                    attempt: attempt,
+                    mirrored: result.mirrored
+                )
             }
         }
     }

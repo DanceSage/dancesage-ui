@@ -7,7 +7,7 @@ struct LessonDetailView: View {
     @State private var showReference = false
     @State private var showAttemptPicker = false
     @State private var resultBox: ComparisonResultBox?
-    @State private var comparedAttemptName = ""
+    @State private var comparedAttempt: DanceRecording?
     @State private var errorMessage = ""
 
     var body: some View {
@@ -63,11 +63,15 @@ struct LessonDetailView: View {
             }
         }
         .sheet(item: $resultBox) { box in
-            ComparisonResultsView(
-                result: box.result,
-                lessonName: lesson.title,
-                attemptName: comparedAttemptName
-            )
+            if let comparedAttempt {
+                ComparisonResultsView(
+                    result: box.result,
+                    lessonName: lesson.title,
+                    attemptName: comparedAttempt.name,
+                    reference: lesson.recording,
+                    attempt: comparedAttempt
+                )
+            }
         }
         .alert("Could Not Compare", isPresented: Binding(
             get: { !errorMessage.isEmpty },
@@ -81,7 +85,7 @@ struct LessonDetailView: View {
 
     private func runComparison(attempt: DanceRecording) {
         do {
-            comparedAttemptName = attempt.name
+            comparedAttempt = attempt
             resultBox = ComparisonResultBox(
                 result: try LessonComparator.compare(
                     reference: lesson.recording,
