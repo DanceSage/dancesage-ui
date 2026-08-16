@@ -62,6 +62,7 @@ struct SkeletonPlaybackView: View {
     @State private var exportProgress: Double = 0
     @State private var exportedVideo: ExportedVideo?
     @State private var exportError = ""
+    @State private var lessonAddedName = ""
     @Environment(\.dismiss) var dismiss
     let timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
 
@@ -158,51 +159,69 @@ struct SkeletonPlaybackView: View {
                     
                     Spacer()
 
-                    // Share the original recording, or export it with the skeleton drawn in.
-                    if let videoURL {
+                    // One share menu: social exports on top, lesson actions below.
+                    if videoURL != nil || !keypoints.isEmpty {
                         Menu {
-                            Button {
-                                exportedVideo = ExportedVideo(url: videoURL)
-                            } label: {
-                                Label("Share Video", systemImage: "video")
+                            if let videoURL {
+                                Section("Share") {
+                                    Button {
+                                        exportedVideo = ExportedVideo(url: videoURL)
+                                    } label: {
+                                        Label("Share Video", systemImage: "video")
+                                    }
+                                    if !keypoints.isEmpty {
+                                        Menu {
+                                            Button("Silent") {
+                                                exportSkeletonVideo(
+                                                    from: videoURL,
+                                                    content: .skeletonOverVideo,
+                                                    includeAudio: false
+                                                )
+                                            }
+                                            Button("With Original Audio") {
+                                                exportSkeletonVideo(
+                                                    from: videoURL,
+                                                    content: .skeletonOverVideo,
+                                                    includeAudio: true
+                                                )
+                                            }
+                                        } label: {
+                                            Label("Skeleton + Video", systemImage: "figure.dance")
+                                        }
+
+                                        Menu {
+                                            Button("Silent") {
+                                                exportSkeletonVideo(
+                                                    from: videoURL,
+                                                    content: .skeletonOnly,
+                                                    includeAudio: false
+                                                )
+                                            }
+                                            Button("With Original Audio") {
+                                                exportSkeletonVideo(
+                                                    from: videoURL,
+                                                    content: .skeletonOnly,
+                                                    includeAudio: true
+                                                )
+                                            }
+                                        } label: {
+                                            Label("Skeleton Only", systemImage: "figure.walk")
+                                        }
+                                    }
+                                }
                             }
                             if !keypoints.isEmpty {
-                                Menu {
-                                    Button("Silent") {
-                                        exportSkeletonVideo(
-                                            from: videoURL,
-                                            content: .skeletonOverVideo,
-                                            includeAudio: false
-                                        )
+                                Section("Lesson") {
+                                    Button {
+                                        addToMyLessons()
+                                    } label: {
+                                        Label("Add to My Lessons", systemImage: "graduationcap")
                                     }
-                                    Button("With Original Audio") {
-                                        exportSkeletonVideo(
-                                            from: videoURL,
-                                            content: .skeletonOverVideo,
-                                            includeAudio: true
-                                        )
+                                    Button {
+                                        sendLessonFile()
+                                    } label: {
+                                        Label("Send as Lesson File", systemImage: "square.and.arrow.up.on.square")
                                     }
-                                } label: {
-                                    Label("Skeleton + Video", systemImage: "figure.dance")
-                                }
-
-                                Menu {
-                                    Button("Silent") {
-                                        exportSkeletonVideo(
-                                            from: videoURL,
-                                            content: .skeletonOnly,
-                                            includeAudio: false
-                                        )
-                                    }
-                                    Button("With Original Audio") {
-                                        exportSkeletonVideo(
-                                            from: videoURL,
-                                            content: .skeletonOnly,
-                                            includeAudio: true
-                                        )
-                                    }
-                                } label: {
-                                    Label("Skeleton Only", systemImage: "figure.walk")
                                 }
                             }
                         } label: {
@@ -381,6 +400,14 @@ struct SkeletonPlaybackView: View {
         .sheet(item: $exportedVideo) { export in
             ActivityView(url: export.url)
         }
+        .alert("Added to Lessons", isPresented: Binding(
+            get: { !lessonAddedName.isEmpty },
+            set: { if !$0 { lessonAddedName = "" } }
+        )) {
+            Button("OK", role: .cancel) { lessonAddedName = "" }
+        } message: {
+            Text("“\(lessonAddedName)” is now a lesson. Open Lessons from the home screen, then compare another recording against it.")
+        }
         .alert("Could Not Export", isPresented: Binding(
             get: { !exportError.isEmpty },
             set: { if !$0 { exportError = "" } }
@@ -430,6 +457,52 @@ struct SkeletonPlaybackView: View {
         }
     }
     
+    // MARK: - Lessons
+
+    /// The playback view holds loose fields, not a DanceRecording; rebuild one for the lesson.
+    private func currentRecording(named name: String) -> DanceRecording {
+        DanceRecording(
+            name: name,
+            keypoints: keypoints,
+            mode: recordingMode,
+            fps: effectiveFPS,
+            frameTimes: effectiveFrameTimes,
+            beats: beats,
+            bpm: bpm,
+            hasVideo: false,
+            cameraPosition: cameraPosition
+        )
+    }
+
+    private var lessonName: String {
+        recordingName.isEmpty ? "Lesson \(Date().formatted(date: .abbreviated, time: .shortened))" : recordingName
+    }
+
+    func addToMyLessons() {
+        do {
+            let lesson = try LessonStore.shared.addLesson(
+                recording: currentRecording(named: lessonName),
+                teacherName: ""
+            )
+            lessonAddedName = lesson.title
+        } catch {
+            exportError = error.localizedDescription
+        }
+    }
+
+    func sendLessonFile() {
+        do {
+            let url = try LessonStore.shared.exportLessonFile(
+                recording: currentRecording(named: lessonName),
+                teacherName: UIDevice.current.name,
+                note: ""
+            )
+            exportedVideo = ExportedVideo(url: url)
+        } catch {
+            exportError = error.localizedDescription
+        }
+    }
+
     // MARK: - Export
 
     func exportSkeletonVideo(
