@@ -4,6 +4,19 @@ struct SkeletonOverlay: View {
     let keypoints: [[CGPoint]]
     var useVisionIndices: Bool = false  // kept for compatibility, not used in styling mode
     var videoAspect: CGFloat = 9.0 / 16.0
+    /// Per-joint error levels (0 good -> 1 bad) for the FIRST person only. When
+    /// set, that skeleton is colored green-to-red by accuracy instead of the
+    /// jewel palette. Nil everywhere else, so ordinary recording and playback
+    /// render exactly as before.
+    var errorLevels: [Double]? = nil
+
+    private func feedbackColor(_ level: Double) -> Color {
+        Color(
+            red: min(1, level * 2),
+            green: min(1, (1 - level) * 2),
+            blue: 0.12
+        )
+    }
     
     private struct SkeletonPalette {
         let primary: Color
@@ -108,6 +121,7 @@ struct SkeletonOverlay: View {
                     // Support both 17-point (Vision/partner) and 33-point (MediaPipe/styling)
                     guard personKeypoints.count == 17 || personKeypoints.count == 33 else { continue }
                     let palette = personPalettes[personIndex % personPalettes.count]
+                    let personErrors = personIndex == 0 ? errorLevels : nil
                     
                     // Use correct point set based on landmark count
                     let activePoints = personKeypoints.count == 33 ? pointsToShow : pointsToShow17
@@ -119,7 +133,8 @@ struct SkeletonOverlay: View {
                         keypoints: personKeypoints,
                         size: size,
                         palette: palette,
-                        connections: activeConnections
+                        connections: activeConnections,
+                        errors: personErrors
                     )
 
                     // Draw glowing joint rings with a bright center point.
@@ -141,9 +156,15 @@ struct SkeletonOverlay: View {
                         )
                         let jointPath = Circle().path(in: jointRect)
 
+                        let jointColor: Color
+                        if let personErrors, index < personErrors.count {
+                            jointColor = feedbackColor(personErrors[index])
+                        } else {
+                            jointColor = palette.secondary
+                        }
                         context.drawLayer { layer in
-                            layer.addFilter(.shadow(color: palette.secondary.opacity(0.9), radius: 7))
-                            layer.fill(jointPath, with: .color(palette.secondary))
+                            layer.addFilter(.shadow(color: jointColor.opacity(0.9), radius: 7))
+                            layer.fill(jointPath, with: .color(jointColor))
                         }
                         context.stroke(
                             jointPath,
@@ -172,7 +193,8 @@ struct SkeletonOverlay: View {
         keypoints: [CGPoint],
         size: CGSize,
         palette: SkeletonPalette,
-        connections: [(Int, Int)]
+        connections: [(Int, Int)],
+        errors: [Double]? = nil
     ) {
         for (startIdx, endIdx) in connections {
             guard startIdx < keypoints.count, endIdx < keypoints.count else { continue }
@@ -195,19 +217,30 @@ struct SkeletonOverlay: View {
             path.move(to: startPoint)
             path.addLine(to: endPoint)
 
+            // Feedback mode: each bone graded by its two joints' accuracy.
+            let boneStart: Color
+            let boneEnd: Color
+            if let errors, startIdx < errors.count, endIdx < errors.count {
+                boneStart = feedbackColor(errors[startIdx])
+                boneEnd = feedbackColor(errors[endIdx])
+            } else {
+                boneStart = palette.primary
+                boneEnd = palette.secondary
+            }
+
             // A soft under-stroke keeps the skeleton legible against busy clothing.
             context.stroke(
                 path,
-                with: .color(palette.primary.opacity(0.22)),
+                with: .color(boneStart.opacity(0.22)),
                 style: StrokeStyle(lineWidth: lineWidth + 8, lineCap: .round, lineJoin: .round)
             )
 
             context.drawLayer { layer in
-                layer.addFilter(.shadow(color: palette.primary.opacity(0.9), radius: 7))
+                layer.addFilter(.shadow(color: boneStart.opacity(0.9), radius: 7))
                 layer.stroke(
                     path,
                     with: .linearGradient(
-                        Gradient(colors: [palette.primary, palette.secondary]),
+                        Gradient(colors: [boneStart, boneEnd]),
                         startPoint: startPoint,
                         endPoint: endPoint
                     ),

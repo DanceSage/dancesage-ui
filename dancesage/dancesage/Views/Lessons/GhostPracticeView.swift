@@ -49,13 +49,20 @@ struct GhostPracticeView: View {
             )
             .ignoresSafeArea()
 
-            // Teacher ghost first (cyan palette), student second (gold) —
-            // same color language as the results overlay.
-            SkeletonOverlay(
-                keypoints: overlaidPoses(),
-                useVisionIndices: false
-            )
-            .ignoresSafeArea()
+            // Teacher ghost in the jewel palette; the student's skeleton is
+            // graded live — green where matching the ghost, red where off.
+            if let ghost = ghostPose() {
+                SkeletonOverlay(keypoints: [ghost], useVisionIndices: false)
+                    .ignoresSafeArea()
+            }
+            if let student = poseDetector.keypoints.first {
+                SkeletonOverlay(
+                    keypoints: [student],
+                    useVisionIndices: false,
+                    errorLevels: liveErrors(student: student)
+                )
+                .ignoresSafeArea()
+            }
 
             VStack {
                 HStack {
@@ -86,8 +93,10 @@ struct GhostPracticeView: View {
                     HStack(spacing: 14) {
                         Label("Teacher", systemImage: "circle.fill")
                             .foregroundColor(Color(red: 0.20, green: 0.95, blue: 0.92))
-                        Label("You", systemImage: "circle.fill")
-                            .foregroundColor(Color(red: 1.00, green: 0.78, blue: 0.18))
+                        Label("Good", systemImage: "circle.fill")
+                            .foregroundColor(.green)
+                        Label("Fix", systemImage: "circle.fill")
+                            .foregroundColor(.red)
                     }
                     .font(.system(size: 13, weight: .semibold))
                     .padding(.horizontal, 12)
@@ -153,13 +162,13 @@ struct GhostPracticeView: View {
 
     // MARK: - Pose assembly
 
-    private func overlaidPoses() -> [[CGPoint]] {
-        var poses: [[CGPoint]] = []
-        if let ghost = ghostPose() {
-            poses.append(ghost)
-        }
-        poses.append(contentsOf: poseDetector.keypoints)
-        return poses
+    /// Grades the student's live pose against the ghost's current pose. The
+    /// student is aligned hip-to-hip with the ghost before measuring, so
+    /// standing in a different part of the frame doesn't read as error.
+    private func liveErrors(student: [CGPoint]) -> [Double]? {
+        guard let ghost = ghostPose() else { return nil }
+        let aligned = PoseFeedback.align(attempt: student, to: ghost, mirrored: false)
+        return PoseFeedback.jointErrors(reference: ghost, alignedAttempt: aligned)
     }
 
     /// The teacher's pose at the current ghost clock — or the opening pose while

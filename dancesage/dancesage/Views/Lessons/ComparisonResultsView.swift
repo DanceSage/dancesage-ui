@@ -9,7 +9,16 @@ struct ComparisonResultsView: View {
     let attempt: DanceRecording
 
     @State private var showOverlay = false
+    @State private var coachText: String?
     @Environment(\.dismiss) private var dismiss
+
+    private func speakFeedback() {
+        if let coachText {
+            CoachVoice.shared.speak(score: result.overallScore, cues: [coachText])
+        } else {
+            CoachVoice.shared.speak(score: result.overallScore, cues: result.cues)
+        }
+    }
 
     private var scoreColor: Color {
         switch result.overallScore {
@@ -60,12 +69,17 @@ struct ComparisonResultsView: View {
                 }
 
                 Section("What to work on") {
-                    ForEach(Array(result.cues.enumerated()), id: \.offset) { _, cue in
-                        Label(cue, systemImage: "speaker.wave.2.fill")
+                    if let coachText {
+                        Text(coachText)
                             .font(.body)
+                    } else {
+                        ForEach(Array(result.cues.enumerated()), id: \.offset) { _, cue in
+                            Label(cue, systemImage: "speaker.wave.2.fill")
+                                .font(.body)
+                        }
                     }
                     Button {
-                        CoachVoice.shared.speak(score: result.overallScore, cues: result.cues)
+                        speakFeedback()
                     } label: {
                         Label("Say It Again", systemImage: "arrow.clockwise")
                     }
@@ -104,8 +118,14 @@ struct ComparisonResultsView: View {
                     }
                 }
             }
-            .onAppear {
-                CoachVoice.shared.speak(score: result.overallScore, cues: result.cues)
+            .task {
+                // Prefer the on-device model's natural phrasing; fall back to
+                // the measured cues where it's unavailable.
+                coachText = await CoachBrain.naturalFeedback(
+                    for: result,
+                    lessonName: lessonName
+                )
+                speakFeedback()
             }
             .onDisappear {
                 CoachVoice.shared.stop()

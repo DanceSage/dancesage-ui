@@ -27,11 +27,24 @@ struct LessonOverlayView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            SkeletonOverlay(
-                keypoints: overlaidPoses(at: playbackTime),
-                videoAspect: 9.0 / 16.0
-            )
-            .ignoresSafeArea()
+            let refPose = pose(of: reference, at: playbackTime)
+            let attPose = pose(of: attempt, at: attemptTime(forReferenceTime: playbackTime))
+                .map { PoseFeedback.align(attempt: $0, to: refPose, mirrored: mirrored) }
+
+            if let refPose {
+                SkeletonOverlay(keypoints: [refPose], videoAspect: 9.0 / 16.0)
+                    .ignoresSafeArea()
+            }
+            if let attPose {
+                SkeletonOverlay(
+                    keypoints: [attPose],
+                    videoAspect: 9.0 / 16.0,
+                    errorLevels: refPose.flatMap {
+                        PoseFeedback.jointErrors(reference: $0, alignedAttempt: attPose)
+                    }
+                )
+                .ignoresSafeArea()
+            }
 
             VStack {
                 HStack {
@@ -50,8 +63,10 @@ struct LessonOverlayView: View {
                 HStack(spacing: 18) {
                     Label("Teacher", systemImage: "circle.fill")
                         .foregroundColor(Color(red: 0.20, green: 0.95, blue: 0.92))
-                    Label("You", systemImage: "circle.fill")
-                        .foregroundColor(Color(red: 1.00, green: 0.78, blue: 0.18))
+                    Label("Good", systemImage: "circle.fill")
+                        .foregroundColor(.green)
+                    Label("Fix", systemImage: "circle.fill")
+                        .foregroundColor(.red)
                 }
                 .font(.system(size: 14, weight: .semibold))
                 .padding(.horizontal, 16)
@@ -99,18 +114,7 @@ struct LessonOverlayView: View {
         }
     }
 
-    // MARK: - Pose assembly
-
-    private func overlaidPoses(at time: Double) -> [[CGPoint]] {
-        var poses: [[CGPoint]] = []
-        let refPose = pose(of: reference, at: time)
-        if let refPose { poses.append(refPose) }
-        if let attPose = pose(of: attempt, at: attemptTime(forReferenceTime: time)) {
-            let adjusted = align(attempt: attPose, to: refPose)
-            poses.append(adjusted)
-        }
-        return poses
-    }
+    // MARK: - Pose lookup
 
     private func pose(of recording: DanceRecording, at seconds: Double) -> [CGPoint]? {
         let times = recording.effectiveFrameTimes
@@ -153,43 +157,6 @@ struct LessonOverlayView: View {
         return attBeats[n - 1] + (time - refBeats[n - 1])
     }
 
-    /// Mirrors (if needed), then anchors the attempt's hips onto the reference's hips
-    /// and matches torso scale, so the comparison is about shape, not staging.
-    private func align(attempt pose: [CGPoint], to referencePose: [CGPoint]?) -> [CGPoint] {
-        var pose = pose
-        if mirrored {
-            pose = pose.map { $0.x >= 0 && $0.y >= 0 ? CGPoint(x: 1 - $0.x, y: $0.y) : $0 }
-        }
-        guard pose.count == 33, let refPose = referencePose, refPose.count == 33 else { return pose }
-
-        func valid(_ p: CGPoint) -> Bool { p.x >= 0 && p.y >= 0 }
-        func mid(_ a: CGPoint, _ b: CGPoint) -> CGPoint? {
-            guard valid(a), valid(b) else { return nil }
-            return CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
-        }
-        func distance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
-            let dx = a.x - b.x, dy = a.y - b.y
-            return (dx * dx + dy * dy).squareRoot()
-        }
-
-        guard let refHips = mid(refPose[23], refPose[24]),
-              let refShoulders = mid(refPose[11], refPose[12]),
-              let attHips = mid(pose[23], pose[24]),
-              let attShoulders = mid(pose[11], pose[12]) else { return pose }
-
-        let refTorso = distance(refShoulders, refHips)
-        let attTorso = distance(attShoulders, attHips)
-        guard attTorso > 0.001, refTorso > 0.001 else { return pose }
-        let scale = refTorso / attTorso
-
-        return pose.map { point in
-            guard valid(point) else { return point }
-            return CGPoint(
-                x: (point.x - attHips.x) * scale + refHips.x,
-                y: (point.y - attHips.y) * scale + refHips.y
-            )
-        }
-    }
 }
 
 private extension Array {
