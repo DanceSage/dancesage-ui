@@ -2,8 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>DanceSageAPIBaseURL</key>
-	<string>$(DANCE_SAGE_API_BASE_URL)</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -19,18 +17,22 @@
 			</array>
 		</dict>
 	</array>
+	<key>DanceSageAPIBaseURL</key>
+	<string>$(DANCE_SAGE_API_BASE_URL)</string>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<false/>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.dancesage.lesson</string>
-			<key>UTTypeDescription</key>
-			<string>DanceSage Lesson</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>
 				<string>public.content</string>
 			</array>
+			<key>UTTypeDescription</key>
+			<string>DanceSage Lesson</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.dancesage.lesson</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
