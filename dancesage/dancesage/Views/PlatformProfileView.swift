@@ -14,7 +14,7 @@ struct PlatformProfileView: View {
     @State private var showSignIn = false
     @State private var opened: PlatformVideo?
     @State private var showSharing = false
-    @State private var showInbox = false
+    @State private var showDelete = false
     @State private var recordings: [DanceRecording] = []
     @State private var playing: DanceRecording?
     @State private var posting: DanceRecording?
@@ -54,15 +54,13 @@ struct PlatformProfileView: View {
                         Button {
                             showSharing = true
                         } label: {
-                            Label("Who I share with…", systemImage: "person.2.fill")
-                        }
-                        Button {
-                            showInbox = true
-                        } label: {
-                            Label("Shared with me", systemImage: "tray.and.arrow.down")
+                            Label("Sharing", systemImage: "person.2.fill")
                         }
                         Divider()
-                        Button("Sign out", role: .destructive) { auth.signOut() }
+                        Button("Sign out") { auth.signOut() }
+                        Button("Delete account", role: .destructive) {
+                            showDelete = true
+                        }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
@@ -74,8 +72,10 @@ struct PlatformProfileView: View {
         .fullScreenCover(isPresented: $showSignIn) {
             AccountView(mode: .signIn)
         }
-        .navigationDestination(isPresented: $showSharing) { SharedWithView() }
-        .navigationDestination(isPresented: $showInbox) { SharedWithMeView() }
+        .navigationDestination(isPresented: $showSharing) { SharingView() }
+        .sheet(isPresented: $showDelete) {
+            DeleteAccountView(postCount: profile?.videos.count ?? 0)
+        }
         .fullScreenCover(item: $playing) { recording in
             SkeletonPlaybackView(
                 keypoints: recording.keypoints,
@@ -91,7 +91,7 @@ struct PlatformProfileView: View {
             )
         }
         .sheet(item: $posting) { recording in
-            PublishToProfileView(
+            PostRecordingView(
                 keypoints: recording.keypoints,
                 fps: recording.fps ?? 15,
                 videoURL: RecordingStore.shared.existingVideoURL(for: recording),

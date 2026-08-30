@@ -96,6 +96,54 @@ final class DanceSageAuth: ObservableObject {
         UserDefaults.standard.set(handle, forKey: "ds.handle")
     }
 
+    /// Delete the account, everywhere.
+    ///
+    /// Two systems hold something: Dance Sage holds the profile and the posts,
+    /// Firebase holds the identity. The server cannot remove the second — it never
+    /// has a credential for it — so the app asks for the password again, which both
+    /// proves it is really you and produces the token Firebase needs.
+    ///
+    /// Dance Sage goes first. If Firebase then fails, the person has lost their
+    /// data and kept an unusable login, which they can retry. The other order could
+    /// leave an identity with no account behind it and no way back in to finish.
+    func deleteAccount(email: String, password: String) async throws {
+        let idToken = try await firebaseSignIn(email: email, password: password)
+
+        guard let base = AppConfig.platformBaseURL, let token = sessionToken else {
+            throw DanceSageAuthError.notConfigured
+        }
+        var req = URLRequest(url: base.appendingPathComponent("v1/me"))
+        req.httpMethod = "DELETE"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            let detail = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?
+                .flatMap { $0["detail"] as? String }
+            throw DanceSageAuthError.server(detail ?? "Could not delete your Dance Sage account.")
+        }
+
+        try await deleteFirebaseIdentity(idToken: idToken)
+        signOut()
+    }
+
+    private func deleteFirebaseIdentity(idToken: String) async throws {
+        guard !firebaseKey.isEmpty,
+              let url = URL(string: "https://identitytoolkit.googleapis.com/v1/"
+                            + "accounts:delete?key=\(firebaseKey)")
+        else { throw DanceSageAuthError.notConfigured }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["idToken": idToken])
+        let (data, response) = try await session.data(for: req)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            throw DanceSageAuthError.server(
+                Self.firebaseMessage(data)
+                ?? "Your videos were deleted, but the sign-in could not be removed. "
+                 + "Contact hello@dancesage.com.")
+        }
+    }
+
     func signOut() {
         sessionToken = nil
         handle = nil

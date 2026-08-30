@@ -48,7 +48,6 @@ struct SkeletonPlaybackView: View {
     @State private var isPlaying = false
     @State private var showSaveDialog = false
     @State private var showPublish = false
-    @State private var showShareWith = false
     @State private var recordingName = ""
     @State private var audioPlayer: AVPlayer? = nil
     @State private var playbackStartedAt: Date?
@@ -226,13 +225,6 @@ struct SkeletonPlaybackView: View {
                                         addToMyLessons()
                                     } label: {
                                         Label("Add to My Lessons", systemImage: "graduationcap")
-                                    }
-                                    // Replaces sending a .dancesage file. A file, once
-                                    // sent, is theirs forever; access can be taken back.
-                                    Button {
-                                        showShareWith = true
-                                    } label: {
-                                        Label("Share with…", systemImage: "person.badge.plus")
                                     }
                                 }
                             }
@@ -461,16 +453,8 @@ struct SkeletonPlaybackView: View {
         .onReceive(timer) { _ in
             updatePlaybackPosition()
         }
-        .sheet(isPresented: $showShareWith) {
-            ShareWithPersonView(
-                keypoints: keypoints,
-                fps: effectiveFPS,
-                videoURL: videoURL,
-                suggestedTitle: recordingName
-            )
-        }
         .sheet(isPresented: $showPublish) {
-            PublishToProfileView(
+            PostRecordingView(
                 keypoints: keypoints,
                 fps: effectiveFPS,
                 videoURL: videoURL,
