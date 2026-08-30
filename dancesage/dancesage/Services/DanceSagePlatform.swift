@@ -216,6 +216,15 @@ struct DanceSagePlatform {
         try check(response, data)
     }
 
+    /// Removes the post, its pose tracks and its video. The recording on the
+    /// phone is untouched — this deletes what was published, not what you danced.
+    func deleteVideo(id: Int) async throws {
+        var req = try request("v1/videos/\(id)")
+        req.httpMethod = "DELETE"
+        let (data, response) = try await session.data(for: req)
+        try check(response, data)
+    }
+
     func setVisibility(videoID: Int, to visibility: String) async throws {
         _ = try await send("v1/videos/\(videoID)/visibility", body: ["visibility": visibility])
     }

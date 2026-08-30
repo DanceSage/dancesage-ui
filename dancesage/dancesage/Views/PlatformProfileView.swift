@@ -15,6 +15,7 @@ struct PlatformProfileView: View {
     @State private var opened: PlatformVideo?
     @State private var showSharing = false
     @State private var showDelete = false
+    @State private var confirmDelete: PlatformVideo?
     @State private var recordings: [DanceRecording] = []
     @State private var playing: DanceRecording?
     @State private var posting: DanceRecording?
@@ -75,6 +76,18 @@ struct PlatformProfileView: View {
         .navigationDestination(isPresented: $showSharing) { SharingView() }
         .sheet(isPresented: $showDelete) {
             DeleteAccountView(postCount: profile?.videos.count ?? 0)
+        }
+        .alert("Delete this post?", isPresented: Binding(
+            get: { confirmDelete != nil },
+            set: { if !$0 { confirmDelete = nil } }
+        ), presenting: confirmDelete) { video in
+            Button("Delete", role: .destructive) {
+                Task { await remove(video) }
+            }
+            Button("Keep", role: .cancel) { confirmDelete = nil }
+        } message: { video in
+            Text("“\(video.title)” and its skeleton are removed from Dance Sage. "
+                 + "The recording on this iPhone is not deleted.")
         }
         .fullScreenCover(item: $playing) { recording in
             SkeletonPlaybackView(
@@ -204,6 +217,8 @@ struct PlatformProfileView: View {
                                 await change(video, to: visibility)
                             } onOpen: {
                                 opened = video
+                            } onDelete: {
+                                confirmDelete = video
                             }
                         }
                     }
@@ -345,6 +360,16 @@ struct PlatformProfileView: View {
         loading = false
     }
 
+    private func remove(_ video: PlatformVideo) async {
+        confirmDelete = nil
+        do {
+            try await DanceSagePlatform.shared.deleteVideo(id: video.id)
+            await load()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
     private func change(_ video: PlatformVideo, to visibility: String) async {
         do {
             try await DanceSagePlatform.shared.setVisibility(videoID: video.id, to: visibility)
@@ -361,6 +386,7 @@ private struct VideoCard: View {
     let video: PlatformVideo
     let onVisibility: (String) async -> Void
     let onOpen: () -> Void
+    let onDelete: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -389,6 +415,8 @@ private struct VideoCard: View {
                     Button("Public") { Task { await onVisibility("public") } }
                     Button("Shared") { Task { await onVisibility("granted") } }
                     Button("Private") { Task { await onVisibility("private") } }
+                    Divider()
+                    Button("Delete post", role: .destructive, action: onDelete)
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: icon).font(.caption2)
