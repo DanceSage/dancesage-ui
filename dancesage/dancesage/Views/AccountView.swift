@@ -3,7 +3,14 @@ import SwiftUI
 /// Create an account or sign in. One screen, because they are the same two fields
 /// and making people find the other one is a needless way to lose them.
 struct AccountView: View {
-    enum Mode { case signUp, signIn }
+    /// Identifiable so the sheet can be presented with `item:` rather than
+    /// `isPresented:`. That matters: `isPresented` builds its content from the
+    /// last body evaluation, so setting the mode and the flag in one tap hands
+    /// the sheet the *previous* mode. `item:` passes the value at presentation.
+    enum Mode: Identifiable {
+        case signUp, signIn
+        var id: Self { self }
+    }
 
     /// Which screen this was opened as. Kept separate from `mode` because `@State`
     /// is initialised once per view identity: presenting this sheet a second time

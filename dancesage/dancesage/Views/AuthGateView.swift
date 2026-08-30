@@ -28,8 +28,9 @@ struct AuthGateView: View {
 
 /// What someone sees before they have an account.
 private struct WelcomeView: View {
-    @State private var showAuth = false
-    @State private var mode: AccountView.Mode = .signUp
+    /// nil means closed. Presenting by value rather than by flag is what makes
+    /// the sheet open on the button that was actually pressed.
+    @State private var authMode: AccountView.Mode?
 
     private let background = Color(red: 81 / 255, green: 63 / 255, blue: 89 / 255)
 
@@ -63,7 +64,7 @@ private struct WelcomeView: View {
 
                 VStack(spacing: 12) {
                     Button {
-                        mode = .signUp; showAuth = true
+                        authMode = .signUp
                     } label: {
                         Text("Create account")
                             .font(.headline)
@@ -73,7 +74,7 @@ private struct WelcomeView: View {
                             .background(.orange, in: Capsule())
                     }
                     Button {
-                        mode = .signIn; showAuth = true
+                        authMode = .signIn
                     } label: {
                         Text("I already have one")
                             .font(.subheadline.weight(.semibold))
@@ -87,7 +88,7 @@ private struct WelcomeView: View {
                 .padding(.bottom, 34)
             }
         }
-        .sheet(isPresented: $showAuth) { AccountView(start: mode) }
+        .sheet(item: $authMode) { AccountView(start: $0) }
     }
 }
 
