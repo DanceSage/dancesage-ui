@@ -15,7 +15,6 @@ struct SharingView: View {
     @State private var direction: Direction = .out
     @State private var grants: [PlatformGrant] = []
     @State private var inbox: [SharedFrom] = []
-    @State private var handle = ""
     @State private var busy = false
     @State private var loading = true
     @State private var error: String?
@@ -65,34 +64,16 @@ struct SharingView: View {
 
     private var outgoing: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                HStack(spacing: 2) {
-                    Text("@").foregroundStyle(.white.opacity(0.4))
-                    TextField("their handle", text: $handle)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .foregroundStyle(.white)
-                        .onSubmit { Task { await add() } }
-                }
-                .padding(.horizontal, 13).padding(.vertical, 11)
-                .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
-
-                Button {
-                    Task { await add() }
-                } label: {
-                    Text("Add").font(.subheadline.bold()).foregroundStyle(.black)
-                        .padding(.horizontal, 18).padding(.vertical, 11)
-                        .background(.orange, in: Capsule())
-                }
-                .disabled(busy || handle.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-            Text("Adding someone here gives them everything you marked shared. "
-                 + "To share one move only, use Post on that recording.")
-                .font(.caption).foregroundStyle(.white.opacity(0.5))
+            // Access is per video, so there is nothing to add from here — this is
+            // the ledger of what you have already given, and where you take it back.
+            Text("Access is per video. Open a recording on your profile and use "
+                 + "Share this one to give someone that clip — they see it and "
+                 + "nothing else.")
+                .font(.caption).foregroundStyle(.white.opacity(0.55))
 
             if grants.isEmpty {
                 blank("person.2", "Nobody yet",
-                      "People you give access to appear here.")
+                      "People you share a video with appear here.")
             } else {
                 ForEach(grants) { g in
                     HStack(spacing: 13) {
@@ -176,18 +157,6 @@ struct SharingView: View {
         grants = await out ?? []
         inbox = await inb ?? []
         loading = false
-    }
-
-    private func add() async {
-        busy = true; error = nil
-        do {
-            try await DanceSagePlatform.shared.grant(
-                handle: handle.trimmingCharacters(in: .whitespaces)
-                    .replacingOccurrences(of: "@", with: ""))
-            handle = ""
-            await load()
-        } catch { self.error = error.localizedDescription }
-        busy = false
     }
 
     private func revoke(_ g: PlatformGrant) async {
