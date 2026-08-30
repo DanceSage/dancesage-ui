@@ -8,7 +8,7 @@ struct dancesageApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            AuthGateView()
                 .environmentObject(watchedEvents)
                 .onOpenURL { url in
                     importLesson(from: url)

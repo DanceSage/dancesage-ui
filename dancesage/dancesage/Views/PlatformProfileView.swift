@@ -1,0 +1,455 @@
+import SwiftUI
+
+/// Your Dance Sage profile, in the app.
+///
+/// Deliberately the same shape as the web page at `/@handle` — same header, same
+/// grid, same visibility control. One profile, two surfaces; the phone is the one
+/// that can also change things.
+struct PlatformProfileView: View {
+    @ObservedObject private var auth = DanceSageAuth.shared
+    @ObservedObject private var lock = BiometricLock.shared
+    @State private var profile: PlatformProfile?
+    @State private var error: String?
+    @State private var loading = true
+    @State private var showSignIn = false
+    @State private var opened: PlatformVideo?
+    @State private var showSharing = false
+    @State private var showInbox = false
+    @State private var recordings: [DanceRecording] = []
+    @State private var playing: DanceRecording?
+    @State private var posting: DanceRecording?
+
+    private let background = Color(red: 81 / 255, green: 63 / 255, blue: 89 / 255)
+
+    var body: some View {
+        ZStack {
+            background.ignoresSafeArea()
+
+            if !auth.isSignedIn {
+                signedOut
+            } else if lock.isLocked {
+                locked
+            } else if loading {
+                ProgressView().tint(.white)
+            } else if let profile {
+                content(profile)
+            } else {
+                failed
+            }
+        }
+        .navigationTitle("Profile")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            if auth.isSignedIn {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        if BiometricLock.shared.available {
+                            Button(lock.isEnabled
+                                   ? "Turn off \(lock.kindName)"
+                                   : "Turn on \(lock.kindName)") {
+                                lock.isEnabled ? lock.disable() : lock.enable()
+                            }
+                        }
+                        Button {
+                            showSharing = true
+                        } label: {
+                            Label("Who I share with…", systemImage: "person.2.fill")
+                        }
+                        Button {
+                            showInbox = true
+                        } label: {
+                            Label("Shared with me", systemImage: "tray.and.arrow.down")
+                        }
+                        Divider()
+                        Button("Sign out", role: .destructive) { auth.signOut() }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                }
+            }
+        }
+        .task { await load(); loadRecordings() }
+        .refreshable { await load(); loadRecordings() }
+        .fullScreenCover(isPresented: $showSignIn) {
+            AccountView(mode: .signIn)
+        }
+        .navigationDestination(isPresented: $showSharing) { SharedWithView() }
+        .navigationDestination(isPresented: $showInbox) { SharedWithMeView() }
+        .fullScreenCover(item: $playing) { recording in
+            SkeletonPlaybackView(
+                keypoints: recording.keypoints,
+                allowSave: false,
+                useVisionIndices: recording.mode == .partner,
+                beats: recording.beats ?? [],
+                bpm: recording.bpm ?? 0,
+                fps: recording.fps ?? 15,
+                frameTimes: recording.frameTimes ?? [],
+                recordingMode: recording.mode ?? .styling,
+                videoURL: RecordingStore.shared.existingVideoURL(for: recording),
+                cameraPosition: recording.cameraPosition
+            )
+        }
+        .sheet(item: $posting) { recording in
+            PublishToProfileView(
+                keypoints: recording.keypoints,
+                fps: recording.fps ?? 15,
+                videoURL: RecordingStore.shared.existingVideoURL(for: recording),
+                suggestedTitle: recording.name
+            )
+        }
+        .fullScreenCover(item: $opened) { video in
+            PlatformVideoDetailView(video: video) { visibility in
+                await change(video, to: visibility)
+                opened = nil
+            }
+        }
+        .onChange(of: auth.isSignedIn) { _, signedIn in
+            if signedIn { Task { await load() } }
+        }
+    }
+
+    // MARK: - States
+
+    private var signedOut: some View {
+        VStack(spacing: 18) {
+            Image(systemName: "person.crop.circle.badge.plus")
+                .font(.system(size: 54))
+                .foregroundStyle(.orange)
+            Text("Your profile lives on Dance Sage")
+                .font(.title3.bold())
+                .foregroundStyle(.white)
+            Text("Sign in to see the videos and skeletons you have posted — the same page people see on the web.")
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.66))
+                .multilineTextAlignment(.center)
+            Button("Sign in") { showSignIn = true }
+                .font(.headline)
+                .foregroundStyle(.black)
+                .padding(.horizontal, 34)
+                .padding(.vertical, 13)
+                .background(.orange, in: Capsule())
+        }
+        .padding(34)
+    }
+
+    /// A session exists but this launch has not proved who is holding the phone.
+    private var locked: some View {
+        VStack(spacing: 18) {
+            Image(systemName: "faceid")
+                .font(.system(size: 50))
+                .foregroundStyle(.orange)
+            Text("Locked")
+                .font(.title3.bold())
+                .foregroundStyle(.white)
+            Text("Unlock with \(lock.kindName) to see your profile.")
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.66))
+            Button("Unlock") { Task { await unlock() } }
+                .font(.headline)
+                .foregroundStyle(.black)
+                .padding(.horizontal, 34)
+                .padding(.vertical, 13)
+                .background(.orange, in: Capsule())
+            Button("Sign out") { auth.signOut() }
+                .font(.footnote)
+                .foregroundStyle(.white.opacity(0.5))
+        }
+        .padding(34)
+        .task { await unlock() }
+    }
+
+    private func unlock() async {
+        if await lock.unlock() { await load() }
+    }
+
+    private var failed: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 40))
+                .foregroundStyle(.orange)
+            Text(error ?? "Could not load your profile.")
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.75))
+                .multilineTextAlignment(.center)
+            Button("Try again") { Task { await load() } }
+                .font(.subheadline.bold())
+                .foregroundStyle(.orange)
+        }
+        .padding(34)
+    }
+
+    private func content(_ p: PlatformProfile) -> some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                header(p)
+
+                if p.videos.isEmpty && recordings.isEmpty {
+                    empty
+                } else {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 12),
+                                        GridItem(.flexible(), spacing: 12)],
+                              spacing: 12) {
+                        // On this iPhone first — the newest thing you did is the
+                        // thing you came back to look at.
+                        ForEach(recordings) { recording in
+                            LocalRecordingCard(recording: recording) {
+                                playing = recording
+                            } onPost: {
+                                posting = recording
+                            }
+                        }
+                        ForEach(p.videos) { video in
+                            VideoCard(video: video) { visibility in
+                                await change(video, to: visibility)
+                            } onOpen: {
+                                opened = video
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 30)
+        }
+    }
+
+    private var empty: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "figure.dance")
+                .font(.system(size: 38))
+                .foregroundStyle(.white.opacity(0.35))
+            Text("Nothing here yet")
+                .font(.headline)
+                .foregroundStyle(.white.opacity(0.8))
+            Text("Record a move on the Record tab. It lands here, and stays on this iPhone until you post it.")
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.55))
+                .multilineTextAlignment(.center)
+        }
+        .padding(.vertical, 46)
+    }
+
+    private func header(_ p: PlatformProfile) -> some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 18) {
+                avatar(p)
+                    .frame(width: 76, height: 76)
+                    .clipShape(Circle())
+                    .overlay { Circle().stroke(.white.opacity(0.16)) }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(p.display_name.isEmpty ? "Dancer" : p.display_name)
+                        .font(.title3.bold())
+                        .foregroundStyle(.white)
+                    Text("@\(p.handle)" + (p.city.isEmpty ? "" : " · \(p.city)"))
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+                Spacer(minLength: 0)
+            }
+
+            if !p.bio.isEmpty {
+                Text(p.bio)
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.78))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            HStack(spacing: 0) {
+                stat("\(recordings.count + p.videos.count)", "recordings")
+                stat("\(p.videos.count)", "posted")
+                stat(p.styles.isEmpty ? "—" : p.styles.split(separator: ",").count.description,
+                     "styles")
+            }
+            .padding(.vertical, 12)
+            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
+        }
+        .padding(.top, 8)
+    }
+
+    /// The photo when there is one, initials when there is not.
+    @ViewBuilder
+    private func avatar(_ p: PlatformProfile) -> some View {
+        if let url = p.avatarURL(base: AppConfig.platformBaseURL) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image.resizable().scaledToFill()
+                case .failure:
+                    initialsCircle(p)
+                default:
+                    Circle().fill(.white.opacity(0.12))
+                        .overlay { ProgressView().tint(.white) }
+                }
+            }
+        } else {
+            initialsCircle(p)
+        }
+    }
+
+    private func initialsCircle(_ p: PlatformProfile) -> some View {
+        Circle()
+            .fill(.white.opacity(0.12))
+            .overlay {
+                Text(initials(p))
+                    .font(.title2.bold())
+                    .foregroundStyle(.orange)
+            }
+    }
+
+    private func stat(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(.headline).foregroundStyle(.white)
+            Text(label).font(.caption2).foregroundStyle(.white.opacity(0.5))
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func initials(_ p: PlatformProfile) -> String {
+        let source = p.display_name.isEmpty ? p.handle : p.display_name
+        return source.split(separator: " ").prefix(2)
+            .compactMap { $0.first.map(String.init) }.joined().uppercased()
+    }
+
+    // MARK: - Work
+
+    /// Straight off the device — no network, so it fills in even with the server down.
+    private func loadRecordings() {
+        recordings = ((try? RecordingStore.shared.load()) ?? [])
+            .sorted { $0.timestamp > $1.timestamp }
+    }
+
+    private func load() async {
+        guard auth.isSignedIn, !lock.isLocked else { loading = false; return }
+        loading = profile == nil
+
+        // The first request to a LAN address fails while iOS is still deciding about
+        // local network access, so a cold open would show an error the user never
+        // caused. Retry once quietly before saying anything went wrong.
+        for attempt in 0..<2 {
+            do {
+                profile = try await DanceSagePlatform.shared.me()
+                error = nil
+                loading = false
+                return
+            } catch let e as PlatformError {
+                if case .notSignedIn = e { auth.signOut(); error = e.localizedDescription; break }
+                error = e.localizedDescription
+            } catch {
+                self.error = error.localizedDescription
+                if attempt == 0 { try? await Task.sleep(for: .milliseconds(600)); continue }
+            }
+            break
+        }
+        loading = false
+    }
+
+    private func change(_ video: PlatformVideo, to visibility: String) async {
+        do {
+            try await DanceSagePlatform.shared.setVisibility(videoID: video.id, to: visibility)
+            await load()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+}
+
+// MARK: - One post
+
+private struct VideoCard: View {
+    let video: PlatformVideo
+    let onVisibility: (String) async -> Void
+    let onOpen: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SkeletonThumbnail(poseKey: video.pose_key)
+                .frame(height: 150)
+                .frame(maxWidth: .infinity)
+                .background(.black.opacity(0.28))
+                .overlay(alignment: .bottomTrailing) {
+                    Text(video.duration)
+                        .font(.caption2.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(.black.opacity(0.55), in: Capsule())
+                        .padding(7)
+                }
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text(video.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Menu {
+                    Button("Public") { Task { await onVisibility("public") } }
+                    Button("Shared") { Task { await onVisibility("granted") } }
+                    Button("Private") { Task { await onVisibility("private") } }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: icon).font(.caption2)
+                        Text(label).font(.caption.weight(.medium))
+                        Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
+                    }
+                    .foregroundStyle(tint)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(tint.opacity(0.16), in: Capsule())
+                }
+            }
+            .padding(11)
+        }
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        // The menu handles its own taps; everything else opens the post.
+        .contentShape(RoundedRectangle(cornerRadius: 18))
+        .onTapGesture { onOpen() }
+    }
+
+    private var label: String {
+        switch video.visibility {
+        case "public":  return "Public"
+        case "granted": return "Shared"
+        default:        return "Private"
+        }
+    }
+    private var icon: String {
+        switch video.visibility {
+        case "public":  return "globe"
+        case "granted": return "person.2.fill"
+        default:        return "lock.fill"
+        }
+    }
+    private var tint: Color {
+        switch video.visibility {
+        case "public":  return .green
+        case "granted": return .orange
+        default:        return .white.opacity(0.7)
+        }
+    }
+}
+
+// MARK: - The skeleton
+
+/// A card-sized loop of the track. Same renderer as the full player.
+private struct SkeletonThumbnail: View {
+    let poseKey: String
+    @State private var track: SkeletonTrack?
+
+    var body: some View {
+        Group {
+            if let track {
+                SkeletonTrackView(track: track)
+            } else {
+                Image(systemName: "figure.dance")
+                    .font(.system(size: 26))
+                    .foregroundStyle(.white.opacity(0.2))
+            }
+        }
+        .task(id: poseKey) { track = await SkeletonTrack.load(key: poseKey) }
+    }
+}

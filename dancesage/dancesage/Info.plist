@@ -21,6 +21,15 @@
 	<string>$(DANCE_SAGE_API_BASE_URL)</string>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<false/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Dance Sage uses Face ID to unlock your profile without typing your password.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Dance Sage connects to your Mac on this network while the platform runs locally during development.</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>

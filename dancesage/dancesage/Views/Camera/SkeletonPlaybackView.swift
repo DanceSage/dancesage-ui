@@ -47,6 +47,8 @@ struct SkeletonPlaybackView: View {
     @State private var currentFrame = 0
     @State private var isPlaying = false
     @State private var showSaveDialog = false
+    @State private var showPublish = false
+    @State private var showShareWith = false
     @State private var recordingName = ""
     @State private var audioPlayer: AVPlayer? = nil
     @State private var playbackStartedAt: Date?
@@ -225,10 +227,12 @@ struct SkeletonPlaybackView: View {
                                     } label: {
                                         Label("Add to My Lessons", systemImage: "graduationcap")
                                     }
+                                    // Replaces sending a .dancesage file. A file, once
+                                    // sent, is theirs forever; access can be taken back.
                                     Button {
-                                        sendLessonFile()
+                                        showShareWith = true
                                     } label: {
-                                        Label("Send as Lesson File", systemImage: "square.and.arrow.up.on.square")
+                                        Label("Share with…", systemImage: "person.badge.plus")
                                     }
                                 }
                             }
@@ -252,6 +256,20 @@ struct SkeletonPlaybackView: View {
                                 .padding()
                         }
                         .disabled(isSaving || isProcessing)
+
+                        // Posting sits beside saving: keeping it on the phone and
+                        // putting it on your profile are two equal choices.
+                        if AppConfig.platformEnabled {
+                            Button(action: {
+                                showPublish = true
+                            }) {
+                                Image(systemName: "person.crop.circle.badge.plus")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(.orange)
+                                    .padding()
+                            }
+                            .disabled(isSaving || isProcessing || keypoints.isEmpty)
+                        }
                     }
                 }
 
@@ -443,6 +461,22 @@ struct SkeletonPlaybackView: View {
         .onReceive(timer) { _ in
             updatePlaybackPosition()
         }
+        .sheet(isPresented: $showShareWith) {
+            ShareWithPersonView(
+                keypoints: keypoints,
+                fps: effectiveFPS,
+                videoURL: videoURL,
+                suggestedTitle: recordingName
+            )
+        }
+        .sheet(isPresented: $showPublish) {
+            PublishToProfileView(
+                keypoints: keypoints,
+                fps: effectiveFPS,
+                videoURL: videoURL,
+                suggestedTitle: recordingName
+            )
+        }
         .alert("Save Recording", isPresented: $showSaveDialog) {
             TextField("Dance name", text: $recordingName)
             Button("Save") {
@@ -500,19 +534,6 @@ struct SkeletonPlaybackView: View {
                 teacherName: ""
             )
             lessonAddedName = lesson.title
-        } catch {
-            exportError = error.localizedDescription
-        }
-    }
-
-    func sendLessonFile() {
-        do {
-            let url = try LessonStore.shared.exportLessonFile(
-                recording: currentRecording(named: lessonName),
-                teacherName: UIDevice.current.name,
-                note: ""
-            )
-            exportedVideo = ExportedVideo(url: url)
         } catch {
             exportError = error.localizedDescription
         }

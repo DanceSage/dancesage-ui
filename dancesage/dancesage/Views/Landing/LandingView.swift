@@ -6,7 +6,6 @@ struct LandingView: View {
     @State private var showVideoPicker = false
     @State private var selectedVideoURL: URL?
     @State private var showVideoProcessing = false
-    @State private var showRecordings = false
     @State private var showModeSelection = false
     @State private var showVideoModeSelection = false
     @State private var videoMode: DanceMode = .styling
@@ -84,16 +83,6 @@ struct LandingView: View {
                         )
                     }
 
-                    Button {
-                        showRecordings = true
-                    } label: {
-                        LandingActionLabel(
-                            title: "My Recordings",
-                            subtitle: "Return to your saved sessions",
-                            icon: "square.stack.fill",
-                            accent: .purple
-                        )
-                    }
                 }
                 .buttonStyle(.plain)
 
@@ -123,9 +112,6 @@ struct LandingView: View {
             if let url = selectedVideoURL {
                 VideoProcessingView(videoURL: url, isPartnerMode: videoMode == .partner)
             }
-        }
-        .sheet(isPresented: $showRecordings) {
-            RecordingsListView()
         }
         .sheet(isPresented: $showVideoModeSelection) {
             VideoModeSelectionView(

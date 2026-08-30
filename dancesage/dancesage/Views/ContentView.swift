@@ -151,7 +151,10 @@ struct ContentView: View {
                 Text(captureError)
             }
         } else {
-            DanceSageHomeView(showCamera: $showCamera, selectedMode: $selectedMode)
+            NavigationStack {
+                LandingView(showCamera: $showCamera, selectedMode: $selectedMode)
+            }
+            .tint(.orange)
         }
     }
     
