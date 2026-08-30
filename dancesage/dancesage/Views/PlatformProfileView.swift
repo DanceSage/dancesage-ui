@@ -16,6 +16,7 @@ struct PlatformProfileView: View {
     @State private var showSharing = false
     @State private var showDelete = false
     @State private var confirmDelete: PlatformVideo?
+    @State private var shareOne: PlatformVideo?
     @State private var recordings: [DanceRecording] = []
     @State private var playing: DanceRecording?
     @State private var posting: DanceRecording?
@@ -74,6 +75,9 @@ struct PlatformProfileView: View {
             AccountView(start: .signIn)
         }
         .navigationDestination(isPresented: $showSharing) { SharingView() }
+        .sheet(item: $shareOne) { video in
+            ShareVideoView(video: video) { await load() }
+        }
         .sheet(isPresented: $showDelete) {
             DeleteAccountView(postCount: profile?.videos.count ?? 0)
         }
@@ -219,6 +223,8 @@ struct PlatformProfileView: View {
                                 opened = video
                             } onDelete: {
                                 confirmDelete = video
+                            } onShare: {
+                                shareOne = video
                             }
                         }
                     }
@@ -387,6 +393,7 @@ private struct VideoCard: View {
     let onVisibility: (String) async -> Void
     let onOpen: () -> Void
     let onDelete: () -> Void
+    let onShare: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -415,6 +422,8 @@ private struct VideoCard: View {
                     Button("Public") { Task { await onVisibility("public") } }
                     Button("Shared") { Task { await onVisibility("granted") } }
                     Button("Private") { Task { await onVisibility("private") } }
+                    Button("Share this one…", systemImage: "person.badge.plus",
+                           action: onShare)
                     Divider()
                     Button("Delete post", role: .destructive, action: onDelete)
                 } label: {
