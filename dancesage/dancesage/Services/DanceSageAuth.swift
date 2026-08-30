@@ -38,8 +38,11 @@ final class DanceSageAuth: ObservableObject {
     private let firebaseKey = AppConfig.firebaseAPIKey
     private let session: URLSession
 
-    init(session: URLSession = .shared) {
-        self.session = session
+    init(session: URLSession? = nil) {
+        let c = URLSessionConfiguration.default
+        c.timeoutIntervalForRequest = 15
+        c.waitsForConnectivity = false
+        self.session = session ?? URLSession(configuration: c)
         self.handle = UserDefaults.standard.string(forKey: "ds.handle")
         self.displayName = UserDefaults.standard.string(forKey: "ds.displayName")
     }

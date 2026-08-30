@@ -139,7 +139,15 @@ enum PlatformError: LocalizedError {
 @MainActor
 struct DanceSagePlatform {
     static let shared = DanceSagePlatform()
-    private let session: URLSession = .shared
+    /// Its own session, so a request that cannot arrive fails in seconds rather
+    /// than sitting for the default minute and looking like a hung app.
+    private let session: URLSession = {
+        let c = URLSessionConfiguration.default
+        c.timeoutIntervalForRequest = 12
+        c.timeoutIntervalForResource = 120      // uploads need longer
+        c.waitsForConnectivity = false
+        return URLSession(configuration: c)
+    }()
 
     /// The same data the web owner page renders — one source, two surfaces.
     func me() async throws -> PlatformProfile {
