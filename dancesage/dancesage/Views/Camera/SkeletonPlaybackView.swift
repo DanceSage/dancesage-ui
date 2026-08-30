@@ -237,15 +237,22 @@ struct SkeletonPlaybackView: View {
                         .disabled(isProcessing || isExporting)
                     }
 
-                    // Save button (only show if allowSave is true)
+                    // Save and Post, both labelled. Two icons alone left people
+                    // unsure which one put a recording on their profile — and an
+                    // action nobody can find may as well not exist.
                     if allowSave {
                         Button(action: {
                             showSaveDialog = true
                         }) {
-                            Image(systemName: "square.and.arrow.down.fill")
-                                .font(.system(size: 40))
-                                .foregroundColor(.blue)
-                                .padding()
+                            VStack(spacing: 3) {
+                                Image(systemName: "iphone.and.arrow.forward.inward")
+                                    .font(.system(size: 32))
+                                Text("Save")
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .foregroundColor(.blue)
+                            .frame(minWidth: 76)
+                            .padding(.vertical, 6)
                         }
                         .disabled(isSaving || isProcessing)
 
@@ -255,10 +262,15 @@ struct SkeletonPlaybackView: View {
                             Button(action: {
                                 showPublish = true
                             }) {
-                                Image(systemName: "person.crop.circle.badge.plus")
-                                    .font(.system(size: 40))
-                                    .foregroundColor(.orange)
-                                    .padding()
+                                VStack(spacing: 3) {
+                                    Image(systemName: "arrow.up.circle.fill")
+                                        .font(.system(size: 32))
+                                    Text("Post")
+                                        .font(.caption.weight(.semibold))
+                                }
+                                .foregroundColor(.orange)
+                                .frame(minWidth: 76)
+                                .padding(.vertical, 6)
                             }
                             .disabled(isSaving || isProcessing || keypoints.isEmpty)
                         }
