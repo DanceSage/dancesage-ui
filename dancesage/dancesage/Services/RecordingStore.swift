@@ -68,6 +68,15 @@ final class RecordingStore {
         return fileManager.fileExists(atPath: url.path) ? url : nil
     }
 
+    /// Links a saved recording to the post it became, so the profile does not show
+    /// the same dance twice — once as a file and once as a post.
+    func markPosted(_ recording: DanceRecording, videoID: Int) throws {
+        var all = try load()
+        guard let i = all.firstIndex(where: { $0.id == recording.id }) else { return }
+        all[i].postedVideoID = videoID
+        try save(all)
+    }
+
     private func save(_ recordings: [DanceRecording]) throws {
         let url = try recordingsURL()
         let data = try JSONEncoder().encode(recordings)

@@ -70,6 +70,7 @@ struct PlatformProfileView: View {
             }
         }
         .task { await load(); loadRecordings() }
+        .onChange(of: profile?.videos.count) { _, _ in loadRecordings() }
         .refreshable { await load(); loadRecordings() }
         .fullScreenCover(isPresented: $showSignIn) {
             AccountView(start: .signIn)
@@ -113,7 +114,11 @@ struct PlatformProfileView: View {
                 fps: recording.fps ?? 15,
                 videoURL: RecordingStore.shared.existingVideoURL(for: recording),
                 suggestedTitle: recording.name
-            )
+            ) { newID in
+                try? RecordingStore.shared.markPosted(recording, videoID: newID)
+                loadRecordings()
+                Task { await load() }
+            }
         }
         .fullScreenCover(item: $opened) { video in
             PlatformVideoDetailView(video: video) { visibility in
@@ -337,7 +342,10 @@ struct PlatformProfileView: View {
 
     /// Straight off the device — no network, so it fills in even with the server down.
     private func loadRecordings() {
+        // A recording that became a post is shown by its post, not twice.
+        let postedIDs = Set((profile?.videos ?? []).map(\.id))
         recordings = ((try? RecordingStore.shared.load()) ?? [])
+            .filter { r in r.postedVideoID.map { !postedIDs.contains($0) } ?? true }
             .sorted { $0.timestamp > $1.timestamp }
     }
 

@@ -11,6 +11,8 @@ struct PostRecordingView: View {
     let fps: Double
     let videoURL: URL?
     var suggestedTitle: String = ""
+    /// Told the id once the post exists, so the caller can link the two.
+    var onPosted: (Int) -> Void = { _ in }
 
     @StateObject private var publisher = DanceSagePublisher()
     @Environment(\.dismiss) private var dismiss
@@ -198,6 +200,7 @@ struct PostRecordingView: View {
                 return
             }
         }
+        if let id = publisher.lastPublishedID { onPosted(id) }
         posted = true
         busy = false
     }

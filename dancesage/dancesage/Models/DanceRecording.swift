@@ -18,6 +18,10 @@ struct DanceRecording: Codable, Identifiable {
     let bpm: Double?
     let hasVideo: Bool?
     let cameraPosition: String?
+    /// The id this recording got when it was posted, if it ever was. Optional so
+    /// recordings saved before posting existed still decode — and so the profile
+    /// can show one card per dance rather than a local copy beside its own post.
+    var postedVideoID: Int?
     
     init(
         name: String,
