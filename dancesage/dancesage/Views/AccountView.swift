@@ -5,7 +5,13 @@ import SwiftUI
 struct AccountView: View {
     enum Mode { case signUp, signIn }
 
-    @State var mode: Mode
+    /// Which screen this was opened as. Kept separate from `mode` because `@State`
+    /// is initialised once per view identity: presenting this sheet a second time
+    /// reuses the first value, so "I already have one" would show sign-up because
+    /// "Create account" had been tapped earlier. Reapplied on every appearance.
+    let start: Mode
+
+    @State private var mode: Mode = .signUp
     @StateObject private var auth = DanceSageAuth.shared
     @Environment(\.dismiss) private var dismiss
 
@@ -112,6 +118,7 @@ struct AccountView: View {
                      + "instead of typing your password again.")
             }
         }
+        .onAppear { mode = start }
         .interactiveDismissDisabled(busy)
     }
 

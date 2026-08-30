@@ -87,7 +87,7 @@ private struct WelcomeView: View {
                 .padding(.bottom, 34)
             }
         }
-        .sheet(isPresented: $showAuth) { AccountView(mode: mode) }
+        .sheet(isPresented: $showAuth) { AccountView(start: mode) }
     }
 }
 

@@ -71,7 +71,7 @@ struct PlatformProfileView: View {
         .task { await load(); loadRecordings() }
         .refreshable { await load(); loadRecordings() }
         .fullScreenCover(isPresented: $showSignIn) {
-            AccountView(mode: .signIn)
+            AccountView(start: .signIn)
         }
         .navigationDestination(isPresented: $showSharing) { SharingView() }
         .sheet(isPresented: $showDelete) {
