@@ -18,7 +18,10 @@ struct LocalRecordingCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ZStack {
+            // Tapping the picture plays it. The Post button below sits outside
+            // that gesture — a tap target over the whole card would swallow it.
+            Button(action: onOpen) {
+                ZStack {
                 Color.black.opacity(0.28)
                 LocalSkeletonPreview(keypoints: recording.keypoints,
                                      fps: recording.fps ?? 15,
@@ -33,22 +36,26 @@ struct LocalRecordingCard: View {
                     .background(.black.opacity(0.55), in: Capsule())
                     .padding(7)
             }
-            .overlay(alignment: .topLeading) {
-                Label("On this iPhone", systemImage: "iphone")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6).padding(.vertical, 3)
-                    .background(.black.opacity(0.5), in: Capsule())
-                    .padding(7)
-            }
+                .overlay(alignment: .topLeading) {
+                    Label("On this iPhone", systemImage: "iphone")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(.black.opacity(0.5), in: Capsule())
+                        .padding(7)
+                }
 
-            VStack(alignment: .leading, spacing: 7) {
                 Text(recording.name)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 11)
+                    .padding(.top, 11)
+            }
+            .buttonStyle(.plain)
 
+            HStack {
                 Button(action: onPost) {
                     Label("Post", systemImage: "arrow.up.circle.fill")
                         .font(.caption.weight(.semibold))
@@ -57,13 +64,14 @@ struct LocalRecordingCard: View {
                         .background(.orange.opacity(0.16), in: Capsule())
                 }
                 .buttonStyle(.plain)
+                Spacer(minLength: 0)
             }
-            .padding(11)
+            .padding(.horizontal, 11)
+            .padding(.top, 7)
+            .padding(.bottom, 11)
         }
         .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
         .clipShape(RoundedRectangle(cornerRadius: 18))
-        .contentShape(RoundedRectangle(cornerRadius: 18))
-        .onTapGesture(perform: onOpen)
         .contextMenu {
             Button("Post…", systemImage: "arrow.up.circle", action: onPost)
             Divider()

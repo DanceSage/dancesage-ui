@@ -430,7 +430,18 @@ private struct VideoCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SkeletonThumbnail(poseKey: video.pose_key)
+            openArea
+            controls
+        }
+        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+
+    /// Tapping the picture or the title opens the post.
+    private var openArea: some View {
+        Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 0) {
+                SkeletonThumbnail(poseKey: video.pose_key)
                 .frame(height: 150)
                 .frame(maxWidth: .infinity)
                 .background(.black.opacity(0.28))
@@ -444,40 +455,45 @@ private struct VideoCard: View {
                         .padding(7)
                 }
 
-            VStack(alignment: .leading, spacing: 7) {
                 Text(video.title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
-
-                Menu {
-                    Button("Public") { Task { await onVisibility("public") } }
-                    Button("Shared") { Task { await onVisibility("granted") } }
-                    Button("Private") { Task { await onVisibility("private") } }
-                    Button("Share this one…", systemImage: "person.badge.plus",
-                           action: onShare)
-                    Divider()
-                    Button("Delete post", role: .destructive, action: onDelete)
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: icon).font(.caption2)
-                        Text(label).font(.caption.weight(.medium))
-                        Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
-                    }
-                    .foregroundStyle(tint)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(tint.opacity(0.16), in: Capsule())
-                }
+                    .padding(.horizontal, 11)
+                    .padding(.top, 11)
             }
-            .padding(11)
         }
-        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
-        .clipShape(RoundedRectangle(cornerRadius: 18))
-        // The menu handles its own taps; everything else opens the post.
-        .contentShape(RoundedRectangle(cornerRadius: 18))
-        .onTapGesture { onOpen() }
+        .buttonStyle(.plain)
+    }
+
+    /// The menu lives outside that button, so its taps reach it.
+    private var controls: some View {
+        HStack {
+            Menu {
+                Button("Public") { Task { await onVisibility("public") } }
+                Button("Shared") { Task { await onVisibility("granted") } }
+                Button("Private") { Task { await onVisibility("private") } }
+                Button("Share this one…", systemImage: "person.badge.plus",
+                       action: onShare)
+                Divider()
+                Button("Delete post", role: .destructive, action: onDelete)
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: icon).font(.caption2)
+                    Text(label).font(.caption.weight(.medium))
+                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
+                }
+                .foregroundStyle(tint)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(tint.opacity(0.16), in: Capsule())
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 11)
+        .padding(.top, 7)
+        .padding(.bottom, 11)
     }
 
     private var label: String {
