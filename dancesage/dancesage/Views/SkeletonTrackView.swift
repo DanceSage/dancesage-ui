@@ -145,8 +145,15 @@ struct SkeletonTrackView: View {
         if track.is2d {
             return CGPoint(x: q[0] * size.width, y: q[1] * size.height)
         }
-        // Yaw only means something when there is depth to turn.
-        let cy = track.hasDepth ? cos(yaw) : 1, sy = track.hasDepth ? sin(yaw) : 0
+        // A track with no depth came from a phone camera, where y grows downward;
+        // a fitted 3D track is metres with y up. Flipping the first puts the dancer
+        // on their head, so which way is up is read from the data, not assumed.
+        if !track.hasDepth {
+            let sc = min(size.width, size.height) / (track.span * 1.45)
+            return CGPoint(x: size.width / 2 + (q[0] - track.centre.x) * sc,
+                           y: size.height / 2 + (q[1] - track.centre.y) * sc)
+        }
+        let cy = cos(yaw), sy = sin(yaw)
         let x = q[0] - track.centre.x
         let y = q[1] - track.centre.y
         let z = (q.count > 2 ? q[2] : 0) - track.centre.z

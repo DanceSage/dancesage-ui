@@ -392,7 +392,22 @@ struct PlatformProfileView: View {
     /// Straight off the device — no network, so it fills in even with the server down.
     private func loadRecordings() {
         // A recording that became a post is shown by its post, not twice.
-        let postedIDs = Set((profile?.videos ?? []).map(\.id))
+        let posts = profile?.videos ?? []
+        let postedIDs = Set(posts.map(\.id))
+        let all = (try? RecordingStore.shared.load()) ?? []
+
+        // Recordings posted before the app started recording the link have no id
+        // to match on. Rather than leave them showing as unposted forever, pair
+        // them by what they are — same name, same length — and write the link so
+        // the guess is made once.
+        for r in all where r.postedVideoID == nil {
+            if let match = posts.first(where: {
+                $0.title == r.name && $0.frames == r.frameCount
+            }) {
+                try? RecordingStore.shared.markPosted(r, videoID: match.id)
+            }
+        }
+
         recordings = ((try? RecordingStore.shared.load()) ?? [])
             .filter { r in r.postedVideoID.map { !postedIDs.contains($0) } ?? true }
             .sorted { $0.timestamp > $1.timestamp }
