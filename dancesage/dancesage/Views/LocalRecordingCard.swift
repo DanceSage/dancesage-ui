@@ -18,40 +18,43 @@ struct LocalRecordingCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Tapping the picture plays it. The Post button below sits outside
-            // that gesture — a tap target over the whole card would swallow it.
+            // Tapping the picture or the title plays it. Post sits outside that
+            // button — a tap target over the whole card would swallow it.
             Button(action: onOpen) {
-                ZStack {
-                Color.black.opacity(0.28)
-                LocalSkeletonPreview(keypoints: recording.keypoints,
-                                     fps: recording.fps ?? 15,
-                                     isPartner: recording.mode == .partner)
-            }
-            .frame(height: 160)
-            .overlay(alignment: .bottomTrailing) {
-                Text(String(format: "%d:%02d", seconds / 60, seconds % 60))
-                    .font(.caption2.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6).padding(.vertical, 3)
-                    .background(.black.opacity(0.55), in: Capsule())
-                    .padding(7)
-            }
-                .overlay(alignment: .topLeading) {
-                    Label("On this iPhone", systemImage: "iphone")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6).padding(.vertical, 3)
-                        .background(.black.opacity(0.5), in: Capsule())
-                        .padding(7)
-                }
+                VStack(alignment: .leading, spacing: 0) {
+                    ZStack {
+                        Color.black.opacity(0.28)
+                        LocalSkeletonPreview(keypoints: recording.keypoints,
+                                             fps: recording.fps ?? 15,
+                                             isPartner: recording.mode == .partner)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 160)
+                    .overlay(alignment: .bottomTrailing) {
+                        Text(String(format: "%d:%02d", seconds / 60, seconds % 60))
+                            .font(.caption2.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6).padding(.vertical, 3)
+                            .background(.black.opacity(0.55), in: Capsule())
+                            .padding(7)
+                    }
+                    .overlay(alignment: .topLeading) {
+                        Label("On this iPhone", systemImage: "iphone")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6).padding(.vertical, 3)
+                            .background(.black.opacity(0.5), in: Capsule())
+                            .padding(7)
+                    }
 
-                Text(recording.name)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 11)
-                    .padding(.top, 11)
+                    Text(recording.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 11)
+                        .padding(.top, 11)
+                }
             }
             .buttonStyle(.plain)
 

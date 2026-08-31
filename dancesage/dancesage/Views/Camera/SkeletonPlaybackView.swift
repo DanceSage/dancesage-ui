@@ -471,7 +471,16 @@ struct SkeletonPlaybackView: View {
                 fps: effectiveFPS,
                 videoURL: videoURL,
                 suggestedTitle: recordingName
-            )
+            ) { newID in
+                // If this dance was also saved, link the two. Without this the
+                // profile shows the saved copy and its own post side by side,
+                // one of them still labelled as living only on the phone.
+                if let saved = (try? RecordingStore.shared.load())?
+                    .first(where: { $0.postedVideoID == nil
+                                 && $0.frameCount == keypoints.count }) {
+                    try? RecordingStore.shared.markPosted(saved, videoID: newID)
+                }
+            }
         }
         .alert("Save Recording", isPresented: $showSaveDialog) {
             TextField("Dance name", text: $recordingName)

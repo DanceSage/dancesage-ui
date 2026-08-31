@@ -400,10 +400,15 @@ struct PlatformProfileView: View {
         // to match on. Rather than leave them showing as unposted forever, pair
         // them by what they are — same name, same length — and write the link so
         // the guess is made once.
+        var claimed = Set(all.compactMap(\.postedVideoID))
         for r in all where r.postedVideoID == nil {
-            if let match = posts.first(where: {
-                $0.title == r.name && $0.frames == r.frameCount
-            }) {
+            // Same title is the strong signal; same length alone is enough when
+            // the title was edited while posting. A post can only be claimed once.
+            let candidates = posts.filter { !claimed.contains($0.id)
+                                            && $0.frames == r.frameCount }
+            if let match = candidates.first(where: { $0.title == r.name })
+                        ?? candidates.first {
+                claimed.insert(match.id)
                 try? RecordingStore.shared.markPosted(r, videoID: match.id)
             }
         }
