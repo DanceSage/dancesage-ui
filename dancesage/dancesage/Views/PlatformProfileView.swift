@@ -15,9 +15,36 @@ struct PlatformProfileView: View {
     @State private var opened: PlatformVideo?
     @State private var showSharing = false
     @State private var showDelete = false
-    @State private var confirmDelete: PlatformVideo?
+    /// What is waiting on a yes. One alert per view is all SwiftUI reliably
+    /// presents; two of them means one silently never fires.
+    private enum Pending: Identifiable {
+        case post(PlatformVideo)
+        case recording(DanceRecording)
+        var id: String {
+            switch self {
+            case .post(let v): return "post-\(v.id)"
+            case .recording(let r): return "rec-\(r.id)"
+            }
+        }
+        var title: String {
+            switch self {
+            case .post: return "Delete this post?"
+            case .recording: return "Delete this recording?"
+            }
+        }
+        var message: String {
+            switch self {
+            case .post(let v):
+                return "“\(v.title)” and its skeleton are removed from Dance Sage. "
+                     + "The recording on this iPhone is not deleted."
+            case .recording(let r):
+                return "“\(r.name)” is removed from this iPhone. "
+                     + "Anything you already posted stays on your profile."
+            }
+        }
+    }
+    @State private var pending: Pending?
     @State private var shareOne: PlatformVideo?
-    @State private var confirmDeleteLocal: DanceRecording?
     @State private var recordings: [DanceRecording] = []
     @State private var playing: DanceRecording?
     @State private var posting: DanceRecording?
@@ -77,33 +104,24 @@ struct PlatformProfileView: View {
             AccountView(start: .signIn)
         }
         .navigationDestination(isPresented: $showSharing) { SharingView() }
-        .alert("Delete this recording?", isPresented: Binding(
-            get: { confirmDeleteLocal != nil },
-            set: { if !$0 { confirmDeleteLocal = nil } }
-        ), presenting: confirmDeleteLocal) { recording in
-            Button("Delete", role: .destructive) { removeLocal(recording) }
-            Button("Keep", role: .cancel) { confirmDeleteLocal = nil }
-        } message: { recording in
-            Text("“\(recording.name)” is removed from this iPhone. "
-                 + "Anything you already posted stays on your profile.")
-        }
         .sheet(item: $shareOne) { video in
             ShareVideoView(video: video) { await load() }
         }
         .sheet(isPresented: $showDelete) {
             DeleteAccountView(postCount: profile?.videos.count ?? 0)
         }
-        .alert("Delete this post?", isPresented: Binding(
-            get: { confirmDelete != nil },
-            set: { if !$0 { confirmDelete = nil } }
-        ), presenting: confirmDelete) { video in
+        .alert(pending?.title ?? "", isPresented: Binding(
+            get: { pending != nil }, set: { if !$0 { pending = nil } }
+        ), presenting: pending) { item in
             Button("Delete", role: .destructive) {
-                Task { await remove(video) }
+                switch item {
+                case .post(let v): Task { await remove(v) }
+                case .recording(let r): removeLocal(r)
+                }
             }
-            Button("Keep", role: .cancel) { confirmDelete = nil }
-        } message: { video in
-            Text("“\(video.title)” and its skeleton are removed from Dance Sage. "
-                 + "The recording on this iPhone is not deleted.")
+            Button("Keep", role: .cancel) { pending = nil }
+        } message: { item in
+            Text(item.message)
         }
         .fullScreenCover(item: $playing) { recording in
             SkeletonPlaybackView(
@@ -217,6 +235,24 @@ struct PlatformProfileView: View {
             VStack(spacing: 24) {
                 header(p)
 
+                // Errors used to be recorded and never shown, so a failed delete
+                // looked exactly like a button that does nothing.
+                if let error {
+                    HStack(alignment: .top, spacing: 9) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        Text(error).font(.footnote)
+                        Spacer(minLength: 0)
+                        Button {
+                            self.error = nil
+                        } label: {
+                            Image(systemName: "xmark").font(.caption2)
+                        }
+                    }
+                    .foregroundStyle(.orange)
+                    .padding(12)
+                    .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                }
+
                 if p.videos.isEmpty && recordings.isEmpty {
                     empty
                 } else {
@@ -231,7 +267,7 @@ struct PlatformProfileView: View {
                             } onPost: {
                                 posting = recording
                             } onDelete: {
-                                confirmDeleteLocal = recording
+                                pending = .recording(recording)
                             }
                         }
                         ForEach(p.videos) { video in
@@ -240,7 +276,7 @@ struct PlatformProfileView: View {
                             } onOpen: {
                                 opened = video
                             } onDelete: {
-                                confirmDelete = video
+                                pending = .post(video)
                             } onShare: {
                                 shareOne = video
                             }
@@ -388,7 +424,7 @@ struct PlatformProfileView: View {
     }
 
     private func removeLocal(_ recording: DanceRecording) {
-        confirmDeleteLocal = nil
+        pending = nil
         guard let all = try? RecordingStore.shared.load(),
               let index = all.firstIndex(where: { $0.id == recording.id }) else { return }
         do {
@@ -400,7 +436,7 @@ struct PlatformProfileView: View {
     }
 
     private func remove(_ video: PlatformVideo) async {
-        confirmDelete = nil
+        pending = nil
         do {
             try await DanceSagePlatform.shared.deleteVideo(id: video.id)
             await load()
