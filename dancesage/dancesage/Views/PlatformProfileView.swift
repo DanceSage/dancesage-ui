@@ -17,6 +17,7 @@ struct PlatformProfileView: View {
     @State private var showDelete = false
     @State private var confirmDelete: PlatformVideo?
     @State private var shareOne: PlatformVideo?
+    @State private var confirmDeleteLocal: DanceRecording?
     @State private var recordings: [DanceRecording] = []
     @State private var playing: DanceRecording?
     @State private var posting: DanceRecording?
@@ -76,6 +77,16 @@ struct PlatformProfileView: View {
             AccountView(start: .signIn)
         }
         .navigationDestination(isPresented: $showSharing) { SharingView() }
+        .alert("Delete this recording?", isPresented: Binding(
+            get: { confirmDeleteLocal != nil },
+            set: { if !$0 { confirmDeleteLocal = nil } }
+        ), presenting: confirmDeleteLocal) { recording in
+            Button("Delete", role: .destructive) { removeLocal(recording) }
+            Button("Keep", role: .cancel) { confirmDeleteLocal = nil }
+        } message: { recording in
+            Text("“\(recording.name)” is removed from this iPhone. "
+                 + "Anything you already posted stays on your profile.")
+        }
         .sheet(item: $shareOne) { video in
             ShareVideoView(video: video) { await load() }
         }
@@ -219,6 +230,8 @@ struct PlatformProfileView: View {
                                 playing = recording
                             } onPost: {
                                 posting = recording
+                            } onDelete: {
+                                confirmDeleteLocal = recording
                             }
                         }
                         ForEach(p.videos) { video in
@@ -372,6 +385,18 @@ struct PlatformProfileView: View {
             break
         }
         loading = false
+    }
+
+    private func removeLocal(_ recording: DanceRecording) {
+        confirmDeleteLocal = nil
+        guard let all = try? RecordingStore.shared.load(),
+              let index = all.firstIndex(where: { $0.id == recording.id }) else { return }
+        do {
+            _ = try RecordingStore.shared.delete(at: IndexSet(integer: index))
+            loadRecordings()
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 
     private func remove(_ video: PlatformVideo) async {

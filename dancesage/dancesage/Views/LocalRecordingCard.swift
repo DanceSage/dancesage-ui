@@ -9,6 +9,7 @@ struct LocalRecordingCard: View {
     let recording: DanceRecording
     let onOpen: () -> Void
     let onPost: () -> Void
+    let onDelete: () -> Void
 
     private var seconds: Int {
         let fps = recording.fps ?? 15
@@ -63,6 +64,12 @@ struct LocalRecordingCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .contentShape(RoundedRectangle(cornerRadius: 18))
         .onTapGesture(perform: onOpen)
+        .contextMenu {
+            Button("Post…", systemImage: "arrow.up.circle", action: onPost)
+            Divider()
+            Button("Delete recording", systemImage: "trash",
+                   role: .destructive, action: onDelete)
+        }
     }
 }
 
