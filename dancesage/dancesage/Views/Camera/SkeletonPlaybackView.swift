@@ -38,6 +38,8 @@ struct SkeletonPlaybackView: View {
     var bpm: Double = 0
     var fps: Double = 15
     var frameTimes: [Double] = []
+    /// Metric 3D from MediaPipe, when the recording has it.
+    var worldKeypoints: [[[PosePoint3D]]] = []
     var recordingMode: DanceRecording.Mode = .styling
     var videoURL: URL? = nil
     var cameraPosition: String? = nil
@@ -468,6 +470,7 @@ struct SkeletonPlaybackView: View {
         .sheet(isPresented: $showPublish) {
             PostRecordingView(
                 keypoints: keypoints,
+                world: worldKeypoints,
                 fps: effectiveFPS,
                 videoURL: videoURL,
                 suggestedTitle: recordingName
@@ -524,7 +527,8 @@ struct SkeletonPlaybackView: View {
             beats: effectiveBeats,
             bpm: effectiveBPM,
             hasVideo: false,
-            cameraPosition: cameraPosition
+            cameraPosition: cameraPosition,
+            worldKeypoints: worldKeypoints
         )
     }
 
@@ -597,7 +601,8 @@ struct SkeletonPlaybackView: View {
             beats: effectiveBeats,
             bpm: effectiveBPM,
             hasVideo: videoURL != nil,
-            cameraPosition: cameraPosition
+            cameraPosition: cameraPosition,
+            worldKeypoints: worldKeypoints
         )
         
         // Save locally

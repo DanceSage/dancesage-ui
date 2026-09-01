@@ -1,5 +1,17 @@
 import Foundation
 
+/// A joint in metres, hip-centred, with perspective removed.
+///
+/// MediaPipe returns this beside the flat image landmarks every frame. It is the
+/// one worth keeping: image coordinates change as a dancer steps toward the
+/// camera — they get bigger rather than nearer — so limb lengths wander frame to
+/// frame and the wobble reads as a bad detector.
+struct PosePoint3D: Codable, Equatable {
+    let x: Float
+    let y: Float
+    let z: Float
+}
+
 struct DanceRecording: Codable, Identifiable {
     enum Mode: String, Codable {
         case styling
@@ -22,6 +34,9 @@ struct DanceRecording: Codable, Identifiable {
     /// recordings saved before posting existed still decode — and so the profile
     /// can show one card per dance rather than a local copy beside its own post.
     var postedVideoID: Int?
+    /// `[frame][person][joint]` in metres. Optional so recordings made while this
+    /// was switched off still decode.
+    let worldKeypoints: [[[PosePoint3D]]]?
     
     init(
         name: String,
@@ -32,7 +47,8 @@ struct DanceRecording: Codable, Identifiable {
         beats: [Double] = [],
         bpm: Double = 0,
         hasVideo: Bool = false,
-        cameraPosition: String? = nil
+        cameraPosition: String? = nil,
+        worldKeypoints: [[[PosePoint3D]]] = []
     ) {
         self.id = UUID().uuidString
         self.name = name
@@ -46,6 +62,9 @@ struct DanceRecording: Codable, Identifiable {
         self.bpm = bpm > 0 ? bpm : nil
         self.hasVideo = hasVideo
         self.cameraPosition = cameraPosition
+        // Only kept when it lines up with the 2D frames; a partial track would be
+        // worse than none, because everything downstream would trust it.
+        self.worldKeypoints = worldKeypoints.count == keypoints.count ? worldKeypoints : nil
     }
 
     var effectiveFPS: Double { max(fps ?? 15, 1) }

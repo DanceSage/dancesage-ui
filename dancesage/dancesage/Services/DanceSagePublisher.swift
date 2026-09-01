@@ -40,6 +40,7 @@ final class DanceSagePublisher: ObservableObject {
                  level: String = "All levels",
                  visibility: String = "private",
                  keypoints: [[[CGPoint]]],
+                 world: [[[PosePoint3D]]] = [],
                  fps: Double,
                  videoURL: URL?) async {
         guard !keypoints.isEmpty, !keypoints[0].isEmpty else {
@@ -71,7 +72,14 @@ final class DanceSagePublisher: ObservableObject {
             // Two tracks from one recording, stored separately so the viewer can
             // switch: the 2D one lies on the video, the other stands on its own.
             form.add("pose2d", try poseJSON(keypoints, dimensions: 2))
-            form.add("pose3d", try poseJSON(keypoints, dimensions: 3))
+            // Metric 3D when the recording has it. Falling back to flattened 2D
+            // keeps older recordings postable, but it is a placeholder — a track
+            // with no depth cannot be turned, and cannot train anything.
+            if world.count == keypoints.count, !world.isEmpty {
+                form.add("pose3d", try worldJSON(world))
+            } else {
+                form.add("pose3d", try poseJSON(keypoints, dimensions: 3))
+            }
             if let upload {
                 form.addFile("video", filename: "clip.mp4",
                              mime: "video/mp4", data: try Data(contentsOf: upload))
@@ -108,6 +116,29 @@ final class DanceSagePublisher: ObservableObject {
     }
 
     func reset() { stage = .idle }
+
+    /// Metric 3D, transposed the same way, in metres.
+    ///
+    /// Negated in y and z: MediaPipe's world frame has y pointing down and z
+    /// toward the camera, while everything that reads these — the players here
+    /// and on the web, and the research pipeline — assumes y up and z away.
+    private func worldJSON(_ world: [[[PosePoint3D]]]) throws -> String {
+        let people = world.map(\.count).max() ?? 1
+        var byPerson: [[[[Double]]]] = []
+        for person in 0..<people {
+            var track: [[[Double]]] = []
+            track.reserveCapacity(world.count)
+            for frame in world where person < frame.count {
+                track.append(frame[person].map {
+                    [Double($0.x), Double(-$0.y), Double(-$0.z)]
+                })
+            }
+            if !track.isEmpty { byPerson.append(track) }
+        }
+        guard !byPerson.isEmpty else { throw PlatformError.server("No joints to post.") }
+        let data = try JSONSerialization.data(withJSONObject: ["j": byPerson])
+        return String(decoding: data, as: UTF8.self)
+    }
 
     /// The detector gives `[frame][person][joint]`; the platform stores
     /// `[person][frame][joint]`. Transposed here rather than on the server so the

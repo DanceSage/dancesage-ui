@@ -8,6 +8,7 @@ import SwiftUI
 /// and no way to tell them apart from the outside.
 struct PostRecordingView: View {
     let keypoints: [[[CGPoint]]]
+    var world: [[[PosePoint3D]]] = []
     let fps: Double
     let videoURL: URL?
     var suggestedTitle: String = ""
@@ -181,7 +182,8 @@ struct PostRecordingView: View {
         busy = true; error = nil
         await publisher.publish(title: title.trimmingCharacters(in: .whitespaces),
                                 visibility: who.visibility,
-                                keypoints: keypoints, fps: fps, videoURL: videoURL)
+                                keypoints: keypoints, world: world,
+                                fps: fps, videoURL: videoURL)
         if case .failed(let message) = publisher.stage {
             error = message; busy = false; return
         }

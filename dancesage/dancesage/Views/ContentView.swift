@@ -24,6 +24,11 @@ struct ContentView: View {
     private var currentRecordedKeypoints: [[[CGPoint]]] {
         isPartnerMode ? visionDetector.recordedKeypoints : poseDetector.recordedKeypoints
     }
+    /// Only MediaPipe produces metric 3D; Apple Vision has no equivalent, so a
+    /// partner recording carries none and everything downstream treats it as flat.
+    private var currentRecordedWorld: [[[PosePoint3D]]] {
+        isPartnerMode ? [] : poseDetector.recordedWorldKeypoints
+    }
     private var currentRecordedFrameTimes: [Double] {
         isPartnerMode ? visionDetector.recordedFrameTimes : poseDetector.recordedFrameTimes
     }
@@ -137,6 +142,7 @@ struct ContentView: View {
                     useVisionIndices: isPartnerMode,
                     fps: 20,
                     frameTimes: currentRecordedFrameTimes,
+                    worldKeypoints: currentRecordedWorld,
                     recordingMode: isPartnerMode ? .partner : .styling,
                     videoURL: capturedVideoURL,
                     cameraPosition: cameraPosition == .front ? "front" : "back"

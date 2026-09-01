@@ -13,6 +13,14 @@ class PoseDetector: NSObject, ObservableObject {
     private var currentNumPoses: Int = 1
     private var recordingStartedAt: TimeInterval?
     private var smoothedKeypoints: [[CGPoint]] = []
+
+    /// Metric 3D, hip-centred, perspective removed — computed by the model every
+    /// frame whether or not anything reads it. Image landmarks change scale as a
+    /// dancer walks toward the camera; these do not, which is why they are the
+    /// ones worth recording.
+    @Published var worldKeypoints: [[PosePoint3D]] = []
+    @Published var recordedWorldKeypoints: [[[PosePoint3D]]] = []
+    private var smoothedWorldKeypoints: [[PosePoint3D]] = []
     
     override init() {
         super.init()
@@ -28,6 +36,7 @@ class PoseDetector: NSObject, ObservableObject {
     
     private func setupPoseLandmarker(numPoses: Int) {
         smoothedKeypoints = []
+        smoothedWorldKeypoints = []
 
         guard let modelPath = Bundle.main.path(forResource: "pose_landmarker_heavy", ofType: "task") else {
             print("❌ Model file not found")
@@ -66,6 +75,7 @@ class PoseDetector: NSObject, ObservableObject {
     
     func startRecording() {
         recordedKeypoints = []
+        recordedWorldKeypoints = []
         recordedFrameTimes = []
         recordingStartedAt = ProcessInfo.processInfo.systemUptime
         isRecording = true
@@ -75,14 +85,39 @@ class PoseDetector: NSObject, ObservableObject {
     func stopRecording() {
         isRecording = false
         recordingStartedAt = nil
-        print("⏹️ Recording stopped - captured \(recordedKeypoints.count) frames")
+        print("⏹️ Recording stopped — \(recordedKeypoints.count) frames, "
+              + "\(recordedWorldKeypoints.count) with metric 3D")
     }
     
     func clearRecording() {
         recordedKeypoints = []
+        recordedWorldKeypoints = []
         recordedFrameTimes = []
         recordingStartedAt = nil
         print("🗑️ Recording cleared")
+    }
+
+    /// The same speed-adaptive smoothing as the 2D track, in three dimensions.
+    private func stabilizeWorld(_ poses: [[PosePoint3D]]) -> [[PosePoint3D]] {
+        guard poses.count == smoothedWorldKeypoints.count else {
+            smoothedWorldKeypoints = poses
+            return poses
+        }
+        let stabilized = zip(poses, smoothedWorldKeypoints).map { currentPose, previousPose in
+            guard currentPose.count == previousPose.count else { return currentPose }
+            return zip(currentPose, previousPose).map { current, previous in
+                let dx = current.x - previous.x
+                let dy = current.y - previous.y
+                let dz = current.z - previous.z
+                let movement = sqrt(dx * dx + dy * dy + dz * dz)
+                let alpha = min(max(0.30 + movement * 8, 0.30), 0.88)
+                return PosePoint3D(x: previous.x + dx * alpha,
+                                   y: previous.y + dy * alpha,
+                                   z: previous.z + dz * alpha)
+            }
+        }
+        smoothedWorldKeypoints = stabilized
+        return stabilized
     }
 
     private func stabilize(_ poses: [[CGPoint]]) -> [[CGPoint]] {

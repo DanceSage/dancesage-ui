@@ -132,6 +132,7 @@ struct PlatformProfileView: View {
                 bpm: recording.bpm ?? 0,
                 fps: recording.fps ?? 15,
                 frameTimes: recording.frameTimes ?? [],
+                worldKeypoints: recording.worldKeypoints ?? [],
                 recordingMode: recording.mode ?? .styling,
                 videoURL: RecordingStore.shared.existingVideoURL(for: recording),
                 cameraPosition: recording.cameraPosition
@@ -140,6 +141,7 @@ struct PlatformProfileView: View {
         .sheet(item: $posting) { recording in
             PostRecordingView(
                 keypoints: recording.keypoints,
+                world: recording.worldKeypoints ?? [],
                 fps: recording.fps ?? 15,
                 videoURL: RecordingStore.shared.existingVideoURL(for: recording),
                 suggestedTitle: recording.name
