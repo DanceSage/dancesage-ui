@@ -58,7 +58,7 @@ struct LocalRecordingCard: View {
             }
             .buttonStyle(.plain)
 
-            HStack {
+            HStack(spacing: 8) {
                 Button(action: onPost) {
                     Label("Post", systemImage: "arrow.up.circle.fill")
                         .font(.caption.weight(.semibold))
@@ -67,6 +67,20 @@ struct LocalRecordingCard: View {
                         .background(.orange.opacity(0.16), in: Capsule())
                 }
                 .buttonStyle(.plain)
+
+                // Visible rather than hidden behind a long press. A recording that
+                // lives only on this phone is the one you are most likely to want
+                // rid of, and nothing else can delete it for you.
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.red.opacity(0.9))
+                        .padding(.horizontal, 9).padding(.vertical, 5)
+                        .background(.red.opacity(0.14), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Delete recording")
+
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 11)
