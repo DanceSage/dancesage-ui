@@ -41,6 +41,7 @@ final class DanceSagePublisher: ObservableObject {
                  visibility: String = "private",
                  keypoints: [[[CGPoint]]],
                  world: [[[PosePoint3D]]] = [],
+                 frameTimes: [Double] = [],
                  fps: Double,
                  videoURL: URL?) async {
         guard !keypoints.isEmpty, !keypoints[0].isEmpty else {
@@ -69,6 +70,13 @@ final class DanceSagePublisher: ObservableObject {
             form.add("level", level)
             form.add("visibility", visibility)
             form.add("fps", String(fps))
+            // When each pose frame was actually captured. Detection is throttled
+            // and irregular, so a viewer that assumes an even spacing watches the
+            // skeleton drift away from the body it is drawn on.
+            if frameTimes.count == keypoints.count, !frameTimes.isEmpty,
+               let times = try? JSONSerialization.data(withJSONObject: frameTimes) {
+                form.add("times", String(decoding: times, as: UTF8.self))
+            }
             // Two tracks from one recording, stored separately so the viewer can
             // switch: the 2D one lies on the video, the other stands on its own.
             form.add("pose2d", try poseJSON(keypoints, dimensions: 2))

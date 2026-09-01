@@ -142,6 +142,7 @@ struct PlatformProfileView: View {
             PostRecordingView(
                 keypoints: recording.keypoints,
                 world: recording.worldKeypoints ?? [],
+                frameTimes: recording.frameTimes ?? [],
                 fps: recording.fps ?? 15,
                 videoURL: RecordingStore.shared.existingVideoURL(for: recording),
                 suggestedTitle: recording.name
@@ -587,7 +588,7 @@ private struct SkeletonThumbnail: View {
     var body: some View {
         Group {
             if let track {
-                SkeletonTrackView(track: track)
+                SkeletonTrackView(track: track, still: true)
             } else {
                 Image(systemName: "figure.dance")
                     .font(.system(size: 26))

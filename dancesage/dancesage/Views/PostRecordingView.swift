@@ -9,6 +9,7 @@ import SwiftUI
 struct PostRecordingView: View {
     let keypoints: [[[CGPoint]]]
     var world: [[[PosePoint3D]]] = []
+    var frameTimes: [Double] = []
     let fps: Double
     let videoURL: URL?
     var suggestedTitle: String = ""
@@ -183,7 +184,7 @@ struct PostRecordingView: View {
         await publisher.publish(title: title.trimmingCharacters(in: .whitespaces),
                                 visibility: who.visibility,
                                 keypoints: keypoints, world: world,
-                                fps: fps, videoURL: videoURL)
+                                frameTimes: frameTimes, fps: fps, videoURL: videoURL)
         if case .failed(let message) = publisher.stage {
             error = message; busy = false; return
         }

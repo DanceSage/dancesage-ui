@@ -471,6 +471,7 @@ struct SkeletonPlaybackView: View {
             PostRecordingView(
                 keypoints: keypoints,
                 world: worldKeypoints,
+                frameTimes: effectiveFrameTimes,
                 fps: effectiveFPS,
                 videoURL: videoURL,
                 suggestedTitle: recordingName

@@ -14,7 +14,7 @@ struct FeedCard: View {
             ZStack {
                 Color.black.opacity(0.28)
                 if let track {
-                    SkeletonTrackView(track: track, lineWidth: 2)
+                    SkeletonTrackView(track: track, still: true, lineWidth: 2)
                 } else {
                     Image(systemName: "figure.dance")
                         .font(.system(size: 24)).foregroundStyle(.white.opacity(0.2))

@@ -79,15 +79,27 @@ struct SkeletonTrack {
 /// slider does; a 2D track ignores it, having no depth to turn.
 struct SkeletonTrackView: View {
     let track: SkeletonTrack
+    /// A still frame. A grid of looping skeletons is noise, and every card
+    /// animating its own is work the phone does for nothing — motion belongs on
+    /// the clip you actually opened.
+    var still: Bool = false
     var time: Double? = nil
     var yaw: Double = 0.3
     var lineWidth: CGFloat = 3
     var glow: Bool = true
 
     var body: some View {
-        TimelineView(.animation(paused: time != nil)) { timeline in
+        if still {
+            // A bit past the start, where the movement has begun — the first frame
+            // is usually someone standing before they dance.
             Canvas { context, size in
-                draw(at: position(for: timeline.date), in: context, size: size)
+                draw(at: Double(track.frames / 3), in: context, size: size)
+            }
+        } else {
+            TimelineView(.animation(paused: time != nil)) { timeline in
+                Canvas { context, size in
+                    draw(at: position(for: timeline.date), in: context, size: size)
+                }
             }
         }
     }

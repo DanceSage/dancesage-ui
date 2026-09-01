@@ -90,6 +90,8 @@ struct LocalSkeletonPreview: View {
     let keypoints: [[[CGPoint]]]
     let fps: Double
     let isPartner: Bool
+    /// Still by default, for the same reason the posted cards are.
+    var still: Bool = true
 
     private var bones: [[Int]] {
         // Vision gives 17 joints in partner mode, MediaPipe 33 in styling.
@@ -98,12 +100,13 @@ struct LocalSkeletonPreview: View {
     }
 
     var body: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(paused: still)) { timeline in
             Canvas { context, size in
                 guard !keypoints.isEmpty else { return }
                 let rate = fps > 0 ? fps : 15
-                let f = Int(timeline.date.timeIntervalSinceReferenceDate * rate)
-                    % keypoints.count
+                let f = still
+                    ? keypoints.count / 3
+                    : Int(timeline.date.timeIntervalSinceReferenceDate * rate) % keypoints.count
                 let frame = keypoints[f]
 
                 for (which, person) in frame.enumerated() {
