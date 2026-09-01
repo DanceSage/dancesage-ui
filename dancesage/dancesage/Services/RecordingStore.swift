@@ -77,6 +77,15 @@ final class RecordingStore {
         try save(all)
     }
 
+    /// Breaks a link to a post that is no longer that dance — a deleted post
+    /// whose id was handed to a later one.
+    func unlinkPost(_ recording: DanceRecording) throws {
+        var all = try load()
+        guard let i = all.firstIndex(where: { $0.id == recording.id }) else { return }
+        all[i].postedVideoID = nil
+        try save(all)
+    }
+
     private func save(_ recordings: [DanceRecording]) throws {
         let url = try recordingsURL()
         let data = try JSONEncoder().encode(recordings)

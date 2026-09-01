@@ -396,8 +396,25 @@ struct PlatformProfileView: View {
     private func loadRecordings() {
         // A recording that became a post is shown by its post, not twice.
         let posts = profile?.videos ?? []
-        let postedIDs = Set(posts.map(\.id))
-        let all = (try? RecordingStore.shared.load()) ?? []
+        let byID = Dictionary(uniqueKeysWithValues: posts.map { ($0.id, $0) })
+        var all = (try? RecordingStore.shared.load()) ?? []
+
+        // A link is only good if the post it names is still the same dance. Video
+        // ids get reused when one is deleted, so a recording can end up pointing
+        // at somebody else's later post — and then hide itself for good behind a
+        // card that is not it.
+        for r in all where r.postedVideoID != nil {
+            let post = byID[r.postedVideoID!]
+            if post == nil && byID.isEmpty { continue }   // profile not loaded yet
+            if let post, post.frames == r.frameCount { continue }
+            if post != nil {
+                try? RecordingStore.shared.unlinkPost(r)
+            }
+        }
+        all = (try? RecordingStore.shared.load()) ?? []
+        let postedIDs = Set(posts.filter { post in
+            all.contains { $0.postedVideoID == post.id && $0.frameCount == post.frames }
+        }.map(\.id))
 
         // Recordings posted before the app started recording the link have no id
         // to match on. Rather than leave them showing as unposted forever, pair
