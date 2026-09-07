@@ -219,6 +219,9 @@ struct LessonOverlayView: View {
             .scaleEffect(zoom)
             .offset(x: (0.5 - centre.x) * zoom * size.width,
                     y: (0.5 - centre.y) * zoom * size.height)
+            // Clipping hides the zoomed overflow but doesn't stop it taking
+            // touches — the video would swallow taps on the pills above it.
+            .allowsHitTesting(false)
 
             if showVideo, player == nil {
                 VStack {
