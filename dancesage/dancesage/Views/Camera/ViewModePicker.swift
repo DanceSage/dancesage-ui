@@ -65,3 +65,32 @@ struct DancerToggles: View {
         .background(Color.black.opacity(0.6), in: Capsule())
     }
 }
+
+/// One speed control for every player: a slider from ¼x to 2x, remembered
+/// across players — slow is a habit, not a setting.
+struct SpeedSlider: View {
+    @Binding var rate: Double
+
+    static func label(_ rate: Double) -> String {
+        switch rate {
+        case 0.25: return "¼x"
+        case 0.5: return "½x"
+        case 0.75: return "¾x"
+        case 1.25: return "1¼x"
+        case 1.5: return "1½x"
+        case 1.75: return "1¾x"
+        default: return "\(Int(rate))x"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("Speed").font(.caption).foregroundStyle(.white.opacity(0.6))
+            Slider(value: $rate, in: 0.25...2, step: 0.25).tint(.orange)
+            Text(SpeedSlider.label(rate))
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 34, alignment: .trailing)
+        }
+    }
+}

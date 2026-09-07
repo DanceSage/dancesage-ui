@@ -50,6 +50,7 @@ struct SkeletonPlaybackView: View {
     @State private var saveResultMessage = ""
     @State private var isSaving = false
     @State private var showVideo = true
+    @AppStorage("replayRate") private var rate: Double = 1
     @State private var showSkeleton = true
     @State private var hiddenDancers: Set<Int> = []
     @State private var videoAspect: CGFloat = 9.0 / 16.0
@@ -361,6 +362,12 @@ struct SkeletonPlaybackView: View {
                             .font(.caption)
                             .foregroundColor(.gray)
                             .padding(.top, 2)
+
+                        SpeedSlider(rate: $rate)
+                            .frame(width: 190)
+                            .padding(.top, 8)
+                            .padding(8)
+                            .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12))
                     }
                     .padding()
                     
@@ -455,6 +462,12 @@ struct SkeletonPlaybackView: View {
         }
         .onReceive(timer) { _ in
             updatePlaybackPosition()
+        }
+        .onChange(of: rate) { _, newRate in
+            guard isPlaying else { return }
+            playbackStartTime = currentTime
+            playbackStartedAt = Date()
+            audioPlayer?.rate = Float(newRate)
         }
         .sheet(isPresented: $showPublish) {
             PostRecordingView(
@@ -664,6 +677,7 @@ struct SkeletonPlaybackView: View {
             let targetTime = CMTime(seconds: currentTime, preferredTimescale: 600)
             audioPlayer?.seek(to: targetTime) { _ in
                 self.audioPlayer?.play()
+                self.audioPlayer?.rate = Float(self.rate)
             }
         } else {
             playbackStartedAt = nil
@@ -678,7 +692,7 @@ struct SkeletonPlaybackView: View {
         if let audioPlayer, audioPlayer.timeControlStatus == .playing {
             elapsed = audioPlayer.currentTime().seconds
         } else if let playbackStartedAt {
-            elapsed = playbackStartTime + Date().timeIntervalSince(playbackStartedAt)
+            elapsed = playbackStartTime + Date().timeIntervalSince(playbackStartedAt) * rate
         } else {
             return
         }

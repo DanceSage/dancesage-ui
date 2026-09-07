@@ -49,7 +49,6 @@ struct LessonOverlayView: View {
     @Environment(\.dismiss) private var dismiss
 
     private let timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
-    private let rates: [Double] = [0.25, 0.5, 1, 2]
     private let teacherColor = Color(red: 0.20, green: 0.95, blue: 0.92)
 
     private var duration: Double {
@@ -348,7 +347,7 @@ struct LessonOverlayView: View {
             }
             .foregroundColor(.white)
 
-            rateRow
+            SpeedSlider(rate: $rate)
         }
     }
 
@@ -372,23 +371,6 @@ struct LessonOverlayView: View {
             }
         }
         .font(.system(size: 13, weight: .semibold).monospacedDigit())
-    }
-
-    private var rateRow: some View {
-        HStack(spacing: 6) {
-            ForEach(rates, id: \.self) { value in
-                Button {
-                    rate = value
-                } label: {
-                    Text(label(for: value))
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(rate == value ? .black : .white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 7)
-                        .background(rate == value ? Color.orange : Color.white.opacity(0.12), in: Capsule())
-                }
-            }
-        }
     }
 
     // MARK: - Playback
@@ -454,13 +436,5 @@ struct LessonOverlayView: View {
     private func formatted(_ seconds: Double) -> String {
         let clamped = max(0, seconds)
         return String(format: "%d:%04.1f", Int(clamped) / 60, clamped.truncatingRemainder(dividingBy: 60))
-    }
-
-    private func label(for rate: Double) -> String {
-        switch rate {
-        case 0.25: return "¼x"
-        case 0.5: return "½x"
-        default: return "\(Int(rate))x"
-        }
     }
 }

@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import Combine
 
 /// One post, full size — the app's version of the web's `/v/{id}`.
 ///
@@ -27,6 +28,9 @@ struct PlatformVideoDetailView: View {
     @State private var hiddenDancers: Set<Int> = []
     @State private var playhead: Double = 0
     @State private var isPlaying = true
+    @State private var lastTick: Date?
+    @AppStorage("replayRate") private var rate: Double = 1
+    private let timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
     @State private var observer: Any?
     @State private var yaw: Double = 17 * .pi / 180     // the web's default Turn
     @State private var dragStart: Double = 0
@@ -108,6 +112,17 @@ struct PlatformVideoDetailView: View {
             }
         }
         .task { await load(); await loadGrants(); await loadReplay() }
+        .onReceive(timer) { now in
+            // Skeleton-only posts run on this clock; with a video, AVPlayer
+            // owns the time and reports it through the observer.
+            defer { lastTick = now }
+            guard isPlaying, player == nil, let track, let lastTick else { return }
+            playhead += now.timeIntervalSince(lastTick) * rate
+            if playhead >= max(track.duration, 0.1) { playhead = 0 }
+        }
+        .onChange(of: rate) { _, newRate in
+            if isPlaying, let player { player.rate = Float(newRate) }
+        }
         .onDisappear { teardown() }
     }
 
@@ -130,7 +145,7 @@ struct PlatformVideoDetailView: View {
                     }
                     .aspectRatio(aspect, contentMode: .fit)
                 } else if let track {
-                    SkeletonTrackView(track: track, time: nil, yaw: yaw, lineWidth: 4, hidden: hiddenDancers)
+                    SkeletonTrackView(track: track, time: playhead, yaw: yaw, lineWidth: 4, hidden: hiddenDancers)
                 }
                 if track == nil && !hasVideo {
                     ProgressView().tint(.white)
@@ -171,11 +186,11 @@ struct PlatformVideoDetailView: View {
     private var controls: some View {
         VStack(spacing: 14) {
 
-            if hasVideo, let track {
+            if let track {
                 HStack(spacing: 12) {
                     Button {
                         isPlaying.toggle()
-                        isPlaying ? player?.play() : player?.pause()
+                        if isPlaying { player?.play(); player?.rate = Float(rate) } else { player?.pause() }
                     } label: {
                         Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                             .font(.title3)
@@ -192,6 +207,8 @@ struct PlatformVideoDetailView: View {
                         .foregroundStyle(.white.opacity(0.7))
                 }
             }
+
+            SpeedSlider(rate: $rate)
 
             if let track, track.hasDepth {
                 HStack(spacing: 10) {
@@ -414,8 +431,10 @@ struct PlatformVideoDetailView: View {
         ) { _ in
             player.seek(to: .zero)
             player.play()
+            player.rate = Float(rate)
         }
         player.play()
+        player.rate = Float(rate)
     }
 
     private func seek(to t: Double) {
