@@ -327,8 +327,25 @@ struct DanceSagePlatform {
     struct OnlineLesson: Decodable {
         struct Attempt: Decodable { let id: Int; let sent: Bool }
         struct Lesson: Decodable { let id: Int }
+        let id: Int
         let lesson: Lesson
         let attempts: [Attempt]
+    }
+
+    /// Add to Lessons, online: the lesson exists from here on. Same video twice is one lesson.
+    func addLesson(videoID: Int, name: String) async throws -> Int {
+        try JSONDecoder().decode(OnlineLesson.self,
+                                 from: try await send("v1/lessons", body: ["video_id": videoID, "name": name])).id
+    }
+
+    /// The lesson and every attempt at it.
+    func deleteLesson(id: Int) async throws {
+        try await delete("v1/lessons/\(id)")
+    }
+
+    /// One attempt's online copy — and whatever share carried it to the teacher.
+    func deleteAttempt(videoID: Int) async throws {
+        try await delete("v1/lessons/attempts/\(videoID)")
     }
 
     /// Which of your attempts have been sent, by post id.

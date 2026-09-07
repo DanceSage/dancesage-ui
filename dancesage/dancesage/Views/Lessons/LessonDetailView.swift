@@ -117,7 +117,7 @@ struct LessonDetailView: View {
                     Label("Remove Lesson", systemImage: "trash")
                 }
             } footer: {
-                Text("Removes this lesson and your attempts at it from this iPhone. Your own recordings are not affected.")
+                Text("Removes this lesson and every attempt at it — here and online. Your own recordings are not affected.")
             }
         }
         .confirmationDialog("Remove “\(lesson.title)”?", isPresented: $confirmRemove, titleVisibility: .visible) {
@@ -272,9 +272,13 @@ struct LessonDetailView: View {
         }
     }
 
+    /// Here and online, with every attempt — the two are one lesson.
     private func removeLesson() {
         do {
             try LessonStore.shared.delete(id: lesson.id)
+            if let online = lesson.onlineLessonID {
+                Task { try? await DanceSagePlatform.shared.deleteLesson(id: online) }
+            }
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
@@ -329,6 +333,9 @@ struct LessonDetailView: View {
     private func deleteAttempts(at offsets: IndexSet) {
         for index in offsets.sorted(by: >) where attempts.indices.contains(index) {
             do {
+                if let online = attempts[index].postedVideoID {
+                    Task { try? await DanceSagePlatform.shared.deleteAttempt(videoID: online) }
+                }
                 attempts = try LessonAttemptStore.shared.delete(id: attempts[index].id, lessonID: lesson.id)
             } catch {
                 errorMessage = error.localizedDescription

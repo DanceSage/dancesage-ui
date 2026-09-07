@@ -354,10 +354,13 @@ struct PlatformVideoDetailView: View {
                 try? FileManager.default.removeItem(at: home)
                 try FileManager.default.moveItem(at: downloaded, to: home)
             }
+            // The lesson exists online from this moment — My lessons on the web
+            // shows it now, empty, and fills in as attempts are saved.
+            let onlineID = try? await DanceSagePlatform.shared.addLesson(videoID: video.id, name: name)
             let lesson = try LessonStore.shared.addLesson(
                 recording: recording, teacherName: teacherName, name: name,
                 sourceVideoID: video.id, sourceGroupID: groupID, sourceGroupName: groupName,
-                sourceSeriesName: seriesName)
+                sourceSeriesName: seriesName, onlineLessonID: onlineID)
             lessonMessage = "“\(lesson.title)” is in your Lessons\(downloaded == nil ? "" : ", with the video"). Open Lessons to practise it."
         } catch {
             lessonMessage = "Couldn't add: \(error.localizedDescription)"

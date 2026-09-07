@@ -28,6 +28,8 @@ struct Lesson: Codable, Identifiable {
     var sourceGroupName: String?
     /// The series it came through, when it did — a folder in Lessons.
     var sourceSeriesName: String?
+    /// The lesson's online id, when it came from a post.
+    var onlineLessonID: Int?
 
     init(name: String? = nil, teacherName: String, note: String, recording: DanceRecording) {
         self.id = UUID().uuidString

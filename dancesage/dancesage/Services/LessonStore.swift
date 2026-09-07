@@ -35,8 +35,9 @@ final class LessonStore {
     @discardableResult
     func addLesson(recording: DanceRecording, teacherName: String, name: String? = nil,
                    sourceVideoID: Int? = nil, sourceGroupID: Int? = nil, sourceGroupName: String? = nil,
-                   sourceSeriesName: String? = nil) throws -> Lesson {
+                   sourceSeriesName: String? = nil, onlineLessonID: Int? = nil) throws -> Lesson {
         var lesson = Lesson(name: name, teacherName: teacherName, note: "", recording: recording)
+        lesson.onlineLessonID = onlineLessonID
         lesson.sourceVideoID = sourceVideoID
         lesson.sourceGroupID = sourceGroupID
         lesson.sourceGroupName = sourceGroupName
