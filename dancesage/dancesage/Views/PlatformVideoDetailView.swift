@@ -14,6 +14,10 @@ struct PlatformVideoDetailView: View {
     var onDelete: (() -> Void)? = nil
     /// Who posted it, when opened from the inbox — becomes the lesson's teacher.
     var teacherName: String = ""
+    /// The group it was shared through, when opened from one — a lesson made
+    /// from it remembers, so attempts can go straight back there.
+    var groupID: Int? = nil
+    var groupName: String? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var track: SkeletonTrack?
@@ -341,7 +345,9 @@ struct PlatformVideoDetailView: View {
                 try? FileManager.default.removeItem(at: home)
                 try FileManager.default.moveItem(at: downloaded, to: home)
             }
-            let lesson = try LessonStore.shared.addLesson(recording: recording, teacherName: teacherName, name: name)
+            let lesson = try LessonStore.shared.addLesson(
+                recording: recording, teacherName: teacherName, name: name,
+                sourceVideoID: video.id, sourceGroupID: groupID, sourceGroupName: groupName)
             lessonMessage = "“\(lesson.title)” is in your Lessons\(downloaded == nil ? "" : ", with the video"). Open Lessons to practise it."
         } catch {
             lessonMessage = "Couldn't add: \(error.localizedDescription)"

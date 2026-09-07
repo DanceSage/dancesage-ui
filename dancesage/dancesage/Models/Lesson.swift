@@ -20,6 +20,12 @@ struct Lesson: Codable, Identifiable {
     /// What the dancer called it when they made it. Optional so lessons saved
     /// before naming existed still decode — those fall back to the recording.
     let name: String?
+    /// Where it came from, when it came from a post: the video, and the group
+    /// it was shared through. An attempt posted from this lesson answers that
+    /// video and can go straight back to that group.
+    var sourceVideoID: Int?
+    var sourceGroupID: Int?
+    var sourceGroupName: String?
 
     init(name: String? = nil, teacherName: String, note: String, recording: DanceRecording) {
         self.id = UUID().uuidString

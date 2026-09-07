@@ -28,6 +28,14 @@ struct GroupWallView: View {
                             ForEach(wall.lessons) { l in
                                 VStack(alignment: .leading, spacing: 6) {
                                     Button { opened = l.video } label: { lessonCard(l) }.buttonStyle(.plain)
+                                    ForEach(l.replies) { r in
+                                        Button { opened = r.asPlatformVideo } label: {
+                                            Label("\(r.by.display_name) · \(r.title)", systemImage: "arrow.turn.down.right")
+                                                .font(.caption)
+                                                .foregroundStyle(.white.opacity(0.85))
+                                                .lineLimit(1)
+                                        }
+                                    }
                                     if wall.group.mine {
                                         FlowLayout(spacing: 5) {
                                             ForEach(l.members.indices, id: \.self) { i in
@@ -75,7 +83,11 @@ struct GroupWallView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task { await load() }
         .refreshable { await load() }
-        .fullScreenCover(item: $opened) { PlatformVideoDetailView(video: $0) }
+        .fullScreenCover(item: $opened) {
+            PlatformVideoDetailView(video: $0,
+                                    teacherName: wall?.group.owner.display_name ?? "",
+                                    groupID: groupID, groupName: wall?.group.name)
+        }
         .confirmationDialog("Share back to the group", isPresented: $pickingReply, titleVisibility: .visible) {
             ForEach(myPosts) { v in
                 Button(v.title) { Task { await shareBack(v) } }

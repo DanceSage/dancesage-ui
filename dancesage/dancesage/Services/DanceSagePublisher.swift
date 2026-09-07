@@ -43,7 +43,8 @@ final class DanceSagePublisher: ObservableObject {
                  world: [[[PosePoint3D]]] = [],
                  frameTimes: [Double] = [],
                  fps: Double,
-                 videoURL: URL?) async {
+                 videoURL: URL?,
+                 replyTo: Int? = nil) async {
         guard !keypoints.isEmpty, !keypoints[0].isEmpty else {
             stage = .failed("This recording has no pose data, so it cannot be posted.")
             return
@@ -70,6 +71,7 @@ final class DanceSagePublisher: ObservableObject {
             form.add("level", level)
             form.add("visibility", visibility)
             form.add("fps", String(fps))
+            if let replyTo { form.add("reply_to", String(replyTo)) }
             // When each pose frame was actually captured. Detection is throttled
             // and irregular, so a viewer that assumes an even spacing watches the
             // skeleton drift away from the body it is drawn on.

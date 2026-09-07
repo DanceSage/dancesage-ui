@@ -33,8 +33,12 @@ final class LessonStore {
     /// Adds one of the dancer's own recordings straight into the lesson library —
     /// the one-phone path, no file sharing involved.
     @discardableResult
-    func addLesson(recording: DanceRecording, teacherName: String, name: String? = nil) throws -> Lesson {
-        let lesson = Lesson(name: name, teacherName: teacherName, note: "", recording: recording)
+    func addLesson(recording: DanceRecording, teacherName: String, name: String? = nil,
+                   sourceVideoID: Int? = nil, sourceGroupID: Int? = nil, sourceGroupName: String? = nil) throws -> Lesson {
+        var lesson = Lesson(name: name, teacherName: teacherName, note: "", recording: recording)
+        lesson.sourceVideoID = sourceVideoID
+        lesson.sourceGroupID = sourceGroupID
+        lesson.sourceGroupName = sourceGroupName
         var lessons = try load()
         lessons.append(lesson)
         try save(lessons)

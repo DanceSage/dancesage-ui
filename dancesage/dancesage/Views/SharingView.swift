@@ -24,6 +24,7 @@ struct SharingView: View {
     @State private var error: String?
     @State private var opened: PlatformVideo?
     @State private var openedFrom = ""
+    @State private var openedGroup: FeedVideo.GroupRef?
 
     private let background = Color(red: 81 / 255, green: 63 / 255, blue: 89 / 255)
 
@@ -63,7 +64,10 @@ struct SharingView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task { await load() }
         .refreshable { await load() }
-        .fullScreenCover(item: $opened) { PlatformVideoDetailView(video: $0, teacherName: openedFrom) }
+        .fullScreenCover(item: $opened) {
+            PlatformVideoDetailView(video: $0, teacherName: openedFrom,
+                                    groupID: openedGroup?.id, groupName: openedGroup?.name)
+        }
     }
 
     // MARK: - Outward
@@ -201,6 +205,7 @@ struct SharingView: View {
                                 VStack(spacing: 6) {
                                     FeedCard(video: v, showByline: false) {
                                         openedFrom = from.display_name.isEmpty ? "@\(from.handle)" : from.display_name
+                                        openedGroup = v.group
                                         opened = v.asPlatformVideo
                                     }
                                     if let grantID = v.grant_id {

@@ -13,6 +13,11 @@ struct PostRecordingView: View {
     let fps: Double
     let videoURL: URL?
     var suggestedTitle: String = ""
+    /// An attempt at someone's video: which one, and the group it came through.
+    /// With a group, the post can go straight back to its owner, filed under
+    /// that video on the group's wall.
+    var replyTo: Int? = nil
+    var replyGroup: (id: Int, name: String)? = nil
     /// Told the id once the post exists, so the caller can link the two.
     var onPosted: (Int) -> Void = { _ in }
 
@@ -48,6 +53,7 @@ struct PostRecordingView: View {
     @State private var busy = false
     @State private var error: String?
     @State private var posted = false
+    @State private var sendBack = true
 
     private var canPost: Bool {
         !busy && !title.trimmingCharacters(in: .whitespaces).isEmpty
@@ -77,6 +83,18 @@ struct PostRecordingView: View {
                 Text(videoURL == nil
                      ? "The skeleton is uploaded. There is no video on this recording."
                      : "The video and the skeleton are uploaded. The copy on this iPhone does not change.")
+            }
+
+            if let replyGroup {
+                Section {
+                    Toggle(isOn: $sendBack) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Send back to \(replyGroup.name)")
+                            Text("Your teacher finds it under their video. Nobody else in the group sees it.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
             }
 
             Section {
@@ -184,7 +202,8 @@ struct PostRecordingView: View {
         await publisher.publish(title: title.trimmingCharacters(in: .whitespaces),
                                 visibility: who.visibility,
                                 keypoints: keypoints, world: world,
-                                frameTimes: frameTimes, fps: fps, videoURL: videoURL)
+                                frameTimes: frameTimes, fps: fps, videoURL: videoURL,
+                                replyTo: replyTo)
         if case .failed(let message) = publisher.stage {
             error = message; busy = false; return
         }
@@ -202,6 +221,10 @@ struct PostRecordingView: View {
                 busy = false
                 return
             }
+        }
+        if let replyGroup, sendBack, let id = publisher.lastPublishedID {
+            do { try await DanceSagePlatform.shared.shareBack(groupID: replyGroup.id, videoID: id) }
+            catch let failure { self.error = "Posted, but could not send it back to \(replyGroup.name): \(failure.localizedDescription)" }
         }
         if let id = publisher.lastPublishedID { onPosted(id) }
         posted = true

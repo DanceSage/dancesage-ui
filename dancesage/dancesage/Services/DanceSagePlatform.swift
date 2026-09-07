@@ -107,6 +107,12 @@ struct FeedVideo: Identifiable, Decodable {
     let by: By
     /// Set on a clip someone shared with you: the grant behind it, so you can decline.
     let grant_id: Int?
+    /// The group it came through, when it did.
+    let group: GroupRef?
+    /// The video this one is an attempt at, when it is.
+    let reply_to: Int?
+
+    struct GroupRef: Decodable { let id: Int; let name: String }
 
     var seconds: Int { fps > 0 ? frames / fps : 0 }
     var duration: String { String(format: "%d:%02d", seconds / 60, seconds % 60) }
@@ -155,6 +161,8 @@ struct GroupWall: Decodable {
         let frames: Int
         let fps: Int
         let members: [Who]
+        /// Attempts filed under this lesson.
+        let replies: [FeedVideo]
         var video: PlatformVideo {
             PlatformVideo(id: id, title: title, note: "", style: "", level: "", visibility: "private",
                           frames: frames, has_video: has_video, pose_key: pose_key, pose2d_key: "",

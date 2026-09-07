@@ -116,7 +116,9 @@ struct LessonDetailView: View {
                 frameTimes: lesson.recording.effectiveFrameTimes,
                 fps: lesson.recording.effectiveFPS,
                 videoURL: nil,
-                suggestedTitle: "\(lesson.title) — my attempt"
+                suggestedTitle: "\(lesson.title) — my attempt",
+                replyTo: lesson.sourceVideoID,
+                replyGroup: lesson.sourceGroupID.map { ($0, lesson.sourceGroupName ?? "the group") }
             ) { id in
                 var posted = attempt
                 posted.postedVideoID = id
