@@ -121,14 +121,16 @@ struct LessonDetailView: View {
         }
         .sheet(item: $postTarget) { attempt in
             PostRecordingView(
-                keypoints: PoseFeedback.overlayTrack(reference: lesson.recording, attempt: attempt.recording, mirrored: attempt.mirrored),
+                keypoints: PoseFeedback.replayTrack(reference: lesson.recording, attempt: attempt.recording).keypoints,
                 frameTimes: lesson.recording.effectiveFrameTimes,
                 fps: lesson.recording.effectiveFPS,
-                videoURL: nil,
+                videoURL: RecordingStore.shared.existingVideoURL(for: attempt.recording),
                 suggestedTitle: "\(lesson.title) — my attempt",
                 replyTo: lesson.sourceVideoID,
                 replyGroup: lesson.sourceGroupID.map { ($0, lesson.sourceGroupName ?? "the group") },
-                        replyTeacher: lesson.teacherName.isEmpty ? nil : lesson.teacherName
+                        replyTeacher: lesson.teacherName.isEmpty ? nil : lesson.teacherName,
+                replyMirrored: attempt.mirrored,
+                replyAttemptTimes: PoseFeedback.replayTrack(reference: lesson.recording, attempt: attempt.recording).attemptTimes
             ) { id in
                 var posted = attempt
                 posted.postedVideoID = id

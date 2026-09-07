@@ -21,6 +21,10 @@ struct PostRecordingView: View {
     /// The teacher's name, for the switch. With `replyTo` set, the post is an
     /// attempt: it goes under My lessons, never onto the profile.
     var replyTeacher: String? = nil
+    /// Attempt details the web replay needs: the mirror flag, and the
+    /// student's own time at each reference frame.
+    var replyMirrored: Bool = false
+    var replyAttemptTimes: [Double] = []
     /// Told the id once the post exists, so the caller can link the two.
     var onPosted: (Int) -> Void = { _ in }
 
@@ -210,7 +214,7 @@ struct PostRecordingView: View {
                                 visibility: who.visibility,
                                 keypoints: keypoints, world: world,
                                 frameTimes: frameTimes, fps: fps, videoURL: videoURL,
-                                replyTo: replyTo)
+                                replyTo: replyTo, mirrored: replyMirrored, attemptTimes: replyAttemptTimes)
         if case .failed(let message) = publisher.stage {
             error = message; busy = false; return
         }

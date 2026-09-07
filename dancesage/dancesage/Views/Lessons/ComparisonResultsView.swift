@@ -200,14 +200,16 @@ struct ComparisonResultsView: View {
             .sheet(isPresented: $showPost) {
                 if let lesson, let saved {
                     PostRecordingView(
-                        keypoints: PoseFeedback.overlayTrack(reference: lesson.recording, attempt: saved.recording, mirrored: saved.mirrored),
+                        keypoints: PoseFeedback.replayTrack(reference: lesson.recording, attempt: saved.recording).keypoints,
                         frameTimes: lesson.recording.effectiveFrameTimes,
                         fps: lesson.recording.effectiveFPS,
-                        videoURL: nil,
+                        videoURL: RecordingStore.shared.existingVideoURL(for: saved.recording),
                         suggestedTitle: "\(lesson.title) — my attempt",
                         replyTo: lesson.sourceVideoID,
                         replyGroup: lesson.sourceGroupID.map { ($0, lesson.sourceGroupName ?? "the group") },
-                        replyTeacher: lesson.teacherName.isEmpty ? nil : lesson.teacherName
+                        replyTeacher: lesson.teacherName.isEmpty ? nil : lesson.teacherName,
+                        replyMirrored: saved.mirrored,
+                        replyAttemptTimes: PoseFeedback.replayTrack(reference: lesson.recording, attempt: saved.recording).attemptTimes
                     ) { id in
                         postedID = id
                         var posted = saved

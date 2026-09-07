@@ -198,6 +198,24 @@ enum PoseFeedback {
         (23, 24), (25, 26), (27, 28), (29, 30), (31, 32),
     ]
 
+    /// Teacher and student, both as the cameras saw them, on the teacher's
+    /// clock — for a replay somewhere else, which aligns and grades them
+    /// itself. Returns the student's own time for each frame too, so their
+    /// video can follow.
+    static func replayTrack(reference: DanceRecording, attempt: DanceRecording)
+        -> (keypoints: [[[CGPoint]]], attemptTimes: [Double]) {
+        let times = reference.effectiveFrameTimes
+        var attemptTimes: [Double] = []
+        let keypoints: [[[CGPoint]]] = times.enumerated().map { index, time in
+            let ref = reference.keypoints[safe: index]?.first ?? []
+            let attTime = attemptTime(forReferenceTime: time, reference: reference, attempt: attempt)
+            attemptTimes.append(attTime)
+            let att = interpolatedPose(of: attempt, at: attTime) ?? Array(repeating: CGPoint(x: -1, y: -1), count: 33)
+            return [ref, att]
+        }
+        return (keypoints, attemptTimes)
+    }
+
     /// Mirrors a pose's identity: flips x and swaps left/right landmark indices.
     static func mirrored(_ pose: [CGPoint]) -> [CGPoint] {
         guard pose.count == 33 else { return pose }
