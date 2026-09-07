@@ -22,7 +22,8 @@ struct PlatformVideoDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var track: SkeletonTrack?
     @State private var player: AVPlayer?
-    @State private var mode: ViewMode = .both
+    @State private var showVideo = true
+    @State private var showSkeleton = true
     @State private var hiddenDancers: Set<Int> = []
     @State private var playhead: Double = 0
     @State private var isPlaying = true
@@ -119,10 +120,10 @@ struct PlatformVideoDetailView: View {
                     // Player and overlay share one aspect-fitted box, so a normalised
                     // 2D track lands on the body instead of on the letterboxing.
                     ZStack {
-                        if mode.showsVideo, let player {
+                        if showVideo, let player {
                             VideoPlayer(player: player).allowsHitTesting(false)
                         }
-                        if let track, mode.showsSkeleton {
+                        if let track, showSkeleton {
                             SkeletonTrackView(track: track, time: playhead,
                                               yaw: yaw, lineWidth: 3, hidden: hiddenDancers)
                         }
@@ -136,6 +137,21 @@ struct PlatformVideoDetailView: View {
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
+            .overlay(alignment: .top) {
+                // The switches live over the picture: the bottom is for transport.
+                HStack(spacing: 8) {
+                    LayerToggles(showVideo: $showVideo, showSkeleton: $showSkeleton, hasVideo: hasVideo)
+                    if let track, track.dancers.count > 1 {
+                        DancerToggles(
+                            labels: replay != nil ? ["Teacher", "Student"]
+                                : (0..<track.dancers.count).map { "Dancer \($0 + 1)" },
+                            colors: SkeletonTrack.colours,
+                            hidden: $hiddenDancers
+                        )
+                    }
+                }
+                .padding(.top, 10)
+            }
             // Drag to turn a 3D skeleton, exactly as dragging the web canvas does.
             .contentShape(Rectangle())
             .gesture(
@@ -154,18 +170,6 @@ struct PlatformVideoDetailView: View {
 
     private var controls: some View {
         VStack(spacing: 14) {
-            if hasVideo {
-                ViewModePicker(mode: $mode)
-            }
-
-            if let track, track.dancers.count > 1 {
-                DancerToggles(
-                    labels: replay != nil ? ["Teacher", "Student"]
-                        : (0..<track.dancers.count).map { "Dancer \($0 + 1)" },
-                    colors: SkeletonTrack.colours,
-                    hidden: $hiddenDancers
-                )
-            }
 
             if hasVideo, let track {
                 HStack(spacing: 12) {

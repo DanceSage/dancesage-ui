@@ -49,7 +49,9 @@ struct SkeletonPlaybackView: View {
     @State private var saveError = ""
     @State private var saveResultMessage = ""
     @State private var isSaving = false
-    @State private var displayMode: ViewMode = .both
+    @State private var showVideo = true
+    @State private var showSkeleton = true
+    @State private var hiddenDancers: Set<Int> = []
     @State private var videoAspect: CGFloat = 9.0 / 16.0
     @State private var videoDuration: Double = 0
     @State private var playbackTime: Double = 0
@@ -84,7 +86,7 @@ struct SkeletonPlaybackView: View {
     }
 
     private var chromeColor: Color {
-        displayMode == .skeleton ? .black : .white
+        showVideo ? .white : .black
     }
 
     // Calculate current time from frame number
@@ -121,31 +123,31 @@ struct SkeletonPlaybackView: View {
     
     var body: some View {
         ZStack {
-            (displayMode == .skeleton ? Color.white : Color.black)
+            (showVideo ? Color.black : Color.white)
                 .ignoresSafeArea()
 
-            if displayMode == .video || displayMode == .both, let audioPlayer {
+            if showVideo, let audioPlayer {
                 VideoSurface(player: audioPlayer)
                     .ignoresSafeArea()
             }
 
-            if displayMode == .skeleton || displayMode == .both, skeletonIsAvailable {
+            if showSkeleton, skeletonIsAvailable {
                 SkeletonOverlay(
                     keypoints: keypoints[currentFrame],
                     useVisionIndices: useVisionIndices,
                     videoAspect: videoAspect
-                )
+                , hidden: hiddenDancers)
                 .ignoresSafeArea()
             }
 
-            if (displayMode == .skeleton || displayMode == .both), isProcessing, !skeletonIsAvailable {
+            if showSkeleton, isProcessing, !skeletonIsAvailable {
                 Text("Skeleton buffering…")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(chromeColor)
                     .padding(.horizontal, 18)
                     .padding(.vertical, 10)
                     .background(
-                        displayMode == .skeleton ? Color.white.opacity(0.9) : Color.black.opacity(0.72),
+                        showVideo ? Color.black.opacity(0.72) : Color.white.opacity(0.9),
                         in: Capsule()
                     )
             }
@@ -274,9 +276,15 @@ struct SkeletonPlaybackView: View {
                     }
                 }
 
-                if videoURL != nil {
-                    ViewModePicker(mode: $displayMode)
+                HStack(spacing: 8) {
+                    LayerToggles(showVideo: $showVideo, showSkeleton: $showSkeleton, hasVideo: videoURL != nil)
+                    if recordingMode == .partner {
+                        DancerToggles(labels: ["Dancer 1", "Dancer 2"],
+                                      colors: [Color(red: 0.20, green: 0.95, blue: 0.92), Color(red: 1.0, green: 0.78, blue: 0.18)],
+                                      hidden: $hiddenDancers)
+                    }
                 }
+                .padding(.top, 4)
 
                 if isProcessing {
                     VStack(spacing: 5) {
@@ -432,7 +440,7 @@ struct SkeletonPlaybackView: View {
         .onAppear {
             setupAudioPlayer()
             loadVideoAspect()
-            if videoURL == nil { displayMode = .skeleton }
+            if videoURL == nil { showVideo = false }
             // Live recordings arrive beat-less; detect from the captured audio.
             if beats.isEmpty, let videoURL {
                 beatDetector.detectBeats(from: videoURL) { found, foundBPM in

@@ -9,6 +9,8 @@ struct SkeletonOverlay: View {
     /// jewel palette. Nil everywhere else, so ordinary recording and playback
     /// render exactly as before.
     var errorLevels: [Double]? = nil
+    /// People switched off by the viewer; the rest keep their palette slot.
+    var hidden: Set<Int> = []
 
     private func feedbackColor(_ level: Double) -> Color {
         Color(
@@ -117,7 +119,7 @@ struct SkeletonOverlay: View {
     var body: some View {
         GeometryReader { geometry in
             Canvas { context, size in
-                for (personIndex, personKeypoints) in keypoints.enumerated() {
+                for (personIndex, personKeypoints) in keypoints.enumerated() where !hidden.contains(personIndex) {
                     // Support both 17-point (Vision/partner) and 33-point (MediaPipe/styling)
                     guard personKeypoints.count == 17 || personKeypoints.count == 33 else { continue }
                     let palette = personPalettes[personIndex % personPalettes.count]

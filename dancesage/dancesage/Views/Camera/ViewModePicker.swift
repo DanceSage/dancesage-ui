@@ -1,56 +1,67 @@
 import SwiftUI
 
-/// What a player shows: the video, the skeleton, or both on top of each other.
-///
-/// One control for every player — the recording playback, a post, the web —
-/// in one order, so switching views feels the same wherever a clip is opened.
-enum ViewMode: String, CaseIterable, Identifiable {
-    case both = "Both"
-    case video = "Video"
-    case skeleton = "Skeleton"
+/// The switches over a player's picture. One pill per thing that can be shown
+/// — the video, the skeleton, each dancer — lit in its own colour when on.
+/// They sit on top of the picture, where there is room; the bottom is for
+/// transport. No "both": two pills on means both.
 
-    var id: Self { self }
-    var showsVideo: Bool { self != .skeleton }
-    var showsSkeleton: Bool { self != .video }
-}
-
-struct ViewModePicker: View {
-    @Binding var mode: ViewMode
+/// A capsule that reads as a switch.
+struct LayerPill: View {
+    let title: String
+    let color: Color
+    let isOn: Bool
+    let action: () -> Void
 
     var body: some View {
-        Picker("Show", selection: $mode) {
-            ForEach(ViewMode.allCases) { Text($0.rawValue).tag($0) }
+        Button(action: action) {
+            Label(title, systemImage: isOn ? "circle.fill" : "circle")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(isOn ? color : .white.opacity(0.45))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(isOn ? color.opacity(0.18) : Color.clear, in: Capsule())
         }
-        .pickerStyle(.segmented)
-        .colorScheme(.dark)
+        .accessibilityValue(isOn ? "shown" : "hidden")
     }
 }
 
-/// Switches for each skeleton in a multi-dancer track: see one, the other, or
-/// both. Colours match the renderer's per-dancer palette.
+/// Video and Skeleton, each on or off.
+struct LayerToggles: View {
+    @Binding var showVideo: Bool
+    @Binding var showSkeleton: Bool
+    var hasVideo: Bool = true
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if hasVideo {
+                LayerPill(title: "Video", color: .white, isOn: showVideo) { showVideo.toggle() }
+            }
+            LayerPill(title: "Skeleton", color: Color(red: 0.20, green: 0.95, blue: 0.92), isOn: showSkeleton) { showSkeleton.toggle() }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.black.opacity(0.6), in: Capsule())
+    }
+}
+
+/// One pill per skeleton in a multi-dancer track, in that skeleton's colour.
 struct DancerToggles: View {
     let labels: [String]
     let colors: [Color]
     @Binding var hidden: Set<Int>
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             ForEach(labels.indices, id: \.self) { index in
                 let isOn = !hidden.contains(index)
-                let color = colors[index % max(colors.count, 1)]
-                Button {
+                LayerPill(title: labels[index], color: colors[index % max(colors.count, 1)], isOn: isOn) {
                     if isOn { hidden.insert(index) } else { hidden.remove(index) }
-                } label: {
-                    Label(labels[index], systemImage: isOn ? "circle.fill" : "circle")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(isOn ? color : .white.opacity(0.45))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(isOn ? color.opacity(0.18) : Color.clear, in: Capsule())
                 }
                 .accessibilityLabel("\(labels[index]) skeleton")
-                .accessibilityValue(isOn ? "shown" : "hidden")
             }
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.black.opacity(0.6), in: Capsule())
     }
 }
