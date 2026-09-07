@@ -6,7 +6,11 @@ import SwiftUI
 /// that viewer — so this gives someone exactly this clip and nothing else.
 struct ShareVideoView: View {
     let video: PlatformVideo
+    /// False when passing on someone else's public video — then you choose
+    /// where the receivers' attempts go.
+    var isMine: Bool = true
     var onChanged: () async -> Void = {}
+    @State private var repliesTo = "sharer"
 
     @Environment(\.dismiss) private var dismiss
     @State private var handle = ""
@@ -37,6 +41,17 @@ struct ShareVideoView: View {
                 } footer: {
                     Text("Only this video becomes visible to them. Everything else "
                          + "you have stays hidden.")
+                }
+
+                if !isMine {
+                    Section {
+                        Picker("Their attempts come to", selection: $repliesTo) {
+                            Text("me").tag("sharer")
+                            Text("whoever made the video").tag("owner")
+                        }
+                    } footer: {
+                        Text("You're passing on someone else's video. Decide who teaches the people you give it to.")
+                    }
                 }
 
                 Section {
@@ -114,7 +129,7 @@ struct ShareVideoView: View {
             try await DanceSagePlatform.shared.grant(
                 handle: handle.trimmingCharacters(in: .whitespaces)
                     .replacingOccurrences(of: "@", with: ""),
-                videoID: video.id)
+                videoID: video.id, repliesTo: isMine ? nil : repliesTo)
             handle = ""
             await load()
             // Sharing marks the video Shared on the server; keep the profile honest.
@@ -127,7 +142,7 @@ struct ShareVideoView: View {
         guard let id = pickedGroup else { return }
         busy = true; error = nil
         do {
-            try await DanceSagePlatform.shared.grant(groupID: id, videoID: video.id)
+            try await DanceSagePlatform.shared.grant(groupID: id, videoID: video.id, repliesTo: isMine ? nil : repliesTo)
             await load()
             await onChanged()
         } catch { self.error = error.localizedDescription }

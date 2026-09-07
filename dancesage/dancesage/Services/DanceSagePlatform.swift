@@ -397,15 +397,20 @@ struct DanceSagePlatform {
 
     /// Give one person access. Naming a video shares just that one and marks it
     /// shared; omitting it covers everything you have marked shared.
-    func grant(handle: String, videoID: Int? = nil) async throws {
+    /// `repliesTo` matters only when passing on someone else's public video:
+    /// "sharer" (you) or "owner" (who made it) receives the attempts.
+    func grant(handle: String, videoID: Int? = nil, repliesTo: String? = nil) async throws {
         var body: [String: Any] = ["handle": handle]
         if let videoID { body["video_id"] = videoID }
+        if let repliesTo { body["replies_to"] = repliesTo }
         _ = try await send("v1/grants", body: body)
     }
 
     /// Give everyone in a group access to one video — one grant per member.
-    func grant(groupID: Int, videoID: Int) async throws {
-        _ = try await send("v1/grants", body: ["group_id": groupID, "video_id": videoID])
+    func grant(groupID: Int, videoID: Int, repliesTo: String? = nil) async throws {
+        var body: [String: Any] = ["group_id": groupID, "video_id": videoID]
+        if let repliesTo { body["replies_to"] = repliesTo }
+        _ = try await send("v1/grants", body: body)
     }
 
     /// Turn down an offer, or stop a share you accepted.

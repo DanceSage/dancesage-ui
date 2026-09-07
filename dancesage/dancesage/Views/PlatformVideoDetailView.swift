@@ -273,7 +273,7 @@ struct PlatformVideoDetailView: View {
         .padding(18)
         .background(.black)
         .sheet(isPresented: $showShare) {
-            ShareVideoView(video: video) {
+            ShareVideoView(video: video, isMine: onVisibilityChange != nil) {
                 await loadGrants()
                 await onShared?()
             }
