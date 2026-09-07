@@ -42,6 +42,7 @@ struct PlatformVideoDetailView: View {
     @State private var replay: (reference: DanceRecording, attempt: DanceRecording)?
     @State private var replayVideos: (reference: URL?, attempt: URL?) = (nil, nil)
     @State private var showReplay = false
+    @State private var replayFailed = false
     @State private var sharedWith: [PlatformGrant] = []
     @State private var showShare = false
     @State private var namingLesson = false
@@ -51,7 +52,42 @@ struct PlatformVideoDetailView: View {
 
     private var hasVideo: Bool { video.has_video && player != nil }
 
+    /// A saved attempt has one view: the replay the student saw. The generic
+    /// player, with both skeletons over one video, only confuses here.
+    private var isAttempt: Bool { video.reply_to != nil }
+
     var body: some View {
+        if isAttempt {
+            attemptBody
+        } else {
+            postBody
+        }
+    }
+
+    private var attemptBody: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            if let replay {
+                LessonOverlayView(reference: replay.reference, attempt: replay.attempt,
+                                  mirrored: video.mirrored ?? false, attemptLabel: "Student",
+                                  referenceVideoURL: replayVideos.reference,
+                                  attemptVideoURL: replayVideos.attempt)
+            } else {
+                VStack(spacing: 14) {
+                    ProgressView().tint(.white)
+                    Text(replayFailed ? "This attempt can't be replayed." : "Loading the replay…")
+                        .foregroundColor(.white.opacity(0.7))
+                    Button("Done") { dismiss() }.foregroundColor(.orange)
+                }
+            }
+        }
+        .task {
+            await loadReplay()
+            if replay == nil { replayFailed = true }
+        }
+    }
+
+    private var postBody: some View {
         NavigationStack {
             ZStack {
                 Color.black.ignoresSafeArea()
@@ -393,8 +429,8 @@ struct PlatformVideoDetailView: View {
         }
         // The student's frames sit on the teacher's clock; their own clock (ta)
         // is what their video follows.
-        replay = (recording(raw.j[0], named: "Teacher", times: raw.t),
-                  recording(raw.j[1], named: video.title, times: raw.ta ?? raw.t))
+        let pair = (recording(raw.j[0], named: "Teacher", times: raw.t),
+                    recording(raw.j[1], named: video.title, times: raw.ta ?? raw.t))
 
         // Both videos, when they exist and the viewer may see them: the lesson's
         // (the teacher's own) and the attempt's (the student's camera).
@@ -403,7 +439,9 @@ struct PlatformVideoDetailView: View {
             return await downloadVideo(id: lessonID, name: "lesson-\(lessonID)")
         }()
         async let studentURL: URL? = video.has_video ? await downloadVideo(id: video.id, name: "attempt-\(video.id)") : nil
+        // Videos first, then the replay: it makes its players when it appears.
         replayVideos = (await teacherURL, await studentURL)
+        replay = pair
     }
 
     /// A post's video to a temporary file, for the replay's players.

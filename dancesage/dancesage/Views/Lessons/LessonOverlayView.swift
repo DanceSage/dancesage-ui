@@ -207,8 +207,9 @@ struct LessonOverlayView: View {
         return ZStack {
             Color.white.opacity(0.05)
             ZStack {
-                if showVideo, let player {
+                if let player {
                     VideoSurface(player: player)
+                        .opacity(showVideo ? 1 : 0)
                 }
                 if let pose {
                     SkeletonOverlay(keypoints: [pose], videoAspect: 9.0 / 16.0, errorLevels: errors)
@@ -272,7 +273,9 @@ struct LessonOverlayView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(isOn.wrappedValue ? color.opacity(0.18) : Color.clear, in: Capsule())
+                .contentShape(Capsule())
         }
+        .buttonStyle(.plain)
         .accessibilityLabel("\(title) skeleton")
         .accessibilityValue(isOn.wrappedValue ? "shown" : "hidden")
     }
@@ -285,7 +288,9 @@ struct LessonOverlayView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(isOn ? Color.orange.opacity(0.18) : Color.clear, in: Capsule())
+                .contentShape(Capsule())
         }
+        .buttonStyle(.plain)
     }
 
     private var controls: some View {
