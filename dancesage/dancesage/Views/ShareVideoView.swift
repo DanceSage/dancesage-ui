@@ -12,9 +12,8 @@ struct ShareVideoView: View {
     @State private var handle = ""
     @State private var shared: [PlatformGrant] = []
     @State private var groups: [PlatformGroup] = []
-    @State private var newGroupName = ""
-    @State private var newGroupHandles = ""
-    @State private var shownGroupMaker = false
+    @State private var pickedGroup: Int?
+    @State private var showGroups = false
     @State private var busy = false
     @State private var loading = true
     @State private var error: String?
@@ -34,44 +33,31 @@ struct ShareVideoView: View {
                             .disabled(busy || handle.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 } header: {
-                    Text("Share “\(video.title)”")
+                    Text("Share with a dancer")
                 } footer: {
                     Text("Only this video becomes visible to them. Everything else "
                          + "you have stays hidden.")
                 }
 
                 Section {
-                    ForEach(groups) { g in
-                        Button {
-                            Task { await share(group: g) }
-                        } label: {
-                            HStack {
-                                Label(g.name, systemImage: "person.3.fill")
-                                Spacer()
-                                Text(g.members.count == 1 ? "1 person" : "\(g.members.count) people")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
+                    Picker("Group", selection: $pickedGroup) {
+                        Text("choose a group").tag(Int?.none)
+                        ForEach(groups) { g in
+                            Text("\(g.name) · \(g.members.count)").tag(Int?.some(g.id))
                         }
-                        .disabled(busy || g.members.isEmpty)
                     }
-                    if shownGroupMaker {
-                        TextField("Group name", text: $newGroupName)
-                        TextField("@handles, comma-separated", text: $newGroupHandles)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        Button("Create group") { Task { await createGroup() } }
-                            .disabled(busy || newGroupName.trimmingCharacters(in: .whitespaces).isEmpty)
-                    } else {
-                        Button {
-                            shownGroupMaker = true
-                        } label: {
-                            Label("New group", systemImage: "plus.circle")
-                        }
+                    Button("Share with the group") { Task { await shareWithGroup() } }
+                        .font(.subheadline.weight(.semibold))
+                        .disabled(busy || pickedGroup == nil)
+                    Button {
+                        showGroups = true
+                    } label: {
+                        Label("Manage groups…", systemImage: "person.3")
                     }
                 } header: {
-                    Text("Or a whole group")
+                    Text("Group share")
                 } footer: {
-                    Text("Tap a group to give everyone in it this video. Being in a group shares nothing by itself.")
+                    Text("Everyone in the group gets the offer. Make groups and add people under Manage groups.")
                 }
 
                 if let error {
@@ -100,13 +86,16 @@ struct ShareVideoView: View {
                     Text("Who can see this one")
                 }
             }
-            .navigationTitle("Share")
+            .navigationTitle("Share “\(video.title)”")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }.disabled(busy)
                 }
             }
+        }
+        .sheet(isPresented: $showGroups) {
+            GroupsView { await load() }
         }
         .task { await load() }
     }
@@ -119,31 +108,6 @@ struct ShareVideoView: View {
         loading = false
     }
 
-    private func share(group: PlatformGroup) async {
-        busy = true; error = nil
-        do {
-            try await DanceSagePlatform.shared.grant(groupID: group.id, videoID: video.id)
-            await load()
-            await onChanged()
-        } catch { self.error = error.localizedDescription }
-        busy = false
-    }
-
-    private func createGroup() async {
-        busy = true; error = nil
-        let handles = newGroupHandles
-            .split(whereSeparator: { $0 == "," || $0 == " " })
-            .map { $0.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "@", with: "") }
-            .filter { !$0.isEmpty }
-        do {
-            _ = try await DanceSagePlatform.shared.createGroup(
-                name: newGroupName.trimmingCharacters(in: .whitespaces), handles: handles)
-            newGroupName = ""; newGroupHandles = ""; shownGroupMaker = false
-            await load()
-        } catch { self.error = error.localizedDescription }
-        busy = false
-    }
-
     private func add() async {
         busy = true; error = nil
         do {
@@ -154,6 +118,17 @@ struct ShareVideoView: View {
             handle = ""
             await load()
             // Sharing marks the video Shared on the server; keep the profile honest.
+            await onChanged()
+        } catch { self.error = error.localizedDescription }
+        busy = false
+    }
+
+    private func shareWithGroup() async {
+        guard let id = pickedGroup else { return }
+        busy = true; error = nil
+        do {
+            try await DanceSagePlatform.shared.grant(groupID: id, videoID: video.id)
+            await load()
             await onChanged()
         } catch { self.error = error.localizedDescription }
         busy = false

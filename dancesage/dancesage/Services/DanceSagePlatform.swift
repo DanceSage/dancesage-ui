@@ -281,6 +281,13 @@ struct DanceSagePlatform {
         _ = try await send("v1/groups/\(groupID)/members", body: ["handle": handle])
     }
 
+    func removeFromGroup(groupID: Int, handle: String) async throws {
+        var req = try request("v1/groups/\(groupID)/members/\(handle)")
+        req.httpMethod = "DELETE"
+        let (data, response) = try await session.data(for: req)
+        try check(response, data)
+    }
+
     func deleteGroup(id: Int) async throws {
         var req = try request("v1/groups/\(id)")
         req.httpMethod = "DELETE"
