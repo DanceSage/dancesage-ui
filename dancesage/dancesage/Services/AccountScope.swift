@@ -32,8 +32,25 @@ enum AccountScope {
         if migratedFor != key {
             migratedFor = key
             adoptDeviceLibrary(at: root, into: directory)
+            ensureWritable(root.appendingPathComponent("accounts", isDirectory: true))
         }
         return directory
+    }
+
+    /// A library restored from outside the app can arrive read-only. If a
+    /// probe write fails, put the permissions back to the app's own.
+    private static func ensureWritable(_ directory: URL) {
+        let probe = directory.appendingPathComponent(".probe")
+        if (try? Data().write(to: probe)) != nil {
+            try? fileManager.removeItem(at: probe)
+            return
+        }
+        guard let walk = fileManager.enumerator(at: directory, includingPropertiesForKeys: [.isDirectoryKey]) else { return }
+        try? fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path)
+        for case let url as URL in walk {
+            let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            try? fileManager.setAttributes([.posixPermissions: isDir ? 0o755 : 0o644], ofItemAtPath: url.path)
+        }
     }
 
     /// The platform's user id, read from the session token. The handle can
