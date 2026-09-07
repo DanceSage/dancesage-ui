@@ -14,6 +14,7 @@ struct SeriesShareView: View {
     @State private var busy = false
     @State private var error: String?
     @State private var confirmDelete = false
+    @State private var showGroups = false
 
     var body: some View {
         NavigationStack {
@@ -43,8 +44,15 @@ struct SeriesShareView: View {
                     Button("Share with the group") { Task { await share(groupID: pickedGroup) } }
                         .font(.subheadline.weight(.semibold))
                         .disabled(busy || pickedGroup == nil)
+                    Button {
+                        showGroups = true
+                    } label: {
+                        Label("Manage groups…", systemImage: "person.3")
+                    }
                 } header: {
                     Text("Group share")
+                } footer: {
+                    Text("Everyone in the group gets the offer. Make groups and add people under Manage groups.")
                 }
 
                 if let error {
@@ -91,6 +99,9 @@ struct SeriesShareView: View {
                 Button("Delete series", role: .destructive) { Task { await deleteSeries() } }
                 Button("Keep", role: .cancel) {}
             }
+        }
+        .sheet(isPresented: $showGroups) {
+            GroupsView { await load() }
         }
         .task { await load() }
     }
