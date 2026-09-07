@@ -18,6 +18,9 @@ struct PostRecordingView: View {
     /// that video on the group's wall.
     var replyTo: Int? = nil
     var replyGroup: (id: Int, name: String)? = nil
+    /// The teacher's name, for the switch. With `replyTo` set, the post is an
+    /// attempt: it goes under My lessons, never onto the profile.
+    var replyTeacher: String? = nil
     /// Told the id once the post exists, so the caller can link the two.
     var onPosted: (Int) -> Void = { _ in }
 
@@ -63,7 +66,7 @@ struct PostRecordingView: View {
     var body: some View {
         NavigationStack {
             Group { posted ? AnyView(done) : AnyView(form) }
-                .navigationTitle("Post")
+                .navigationTitle(replyTo == nil ? "Post" : "Save to my lessons")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
@@ -85,28 +88,32 @@ struct PostRecordingView: View {
                      : "The video and the skeleton are uploaded. The copy on this iPhone does not change.")
             }
 
-            if let replyGroup {
+            if replyTo != nil {
                 Section {
                     Toggle(isOn: $sendBack) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Send back to \(replyGroup.name)")
-                            Text("Your teacher finds it under their video. Nobody else in the group sees it.")
+                            Text("Send to \(replyTeacher ?? replyGroup?.name ?? "the teacher") now")
+                            Text("Off, it waits under My lessons — send it later from here or from the web.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
+                } header: {
+                    Text("Your attempt")
+                } footer: {
+                    Text("Attempts are saved under My lessons, private. They never appear on your profile.")
                 }
-            }
-
-            Section {
-                Picker("Who can see it", selection: $who) {
-                    ForEach(Who.allCases) { Text($0.rawValue).tag($0) }
+            } else {
+                Section {
+                    Picker("Who can see it", selection: $who) {
+                        ForEach(Who.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } header: {
+                    Text("Who can see it")
+                } footer: {
+                    Text(who.footnote)
                 }
-                .pickerStyle(.inline)
-                .labelsHidden()
-            } header: {
-                Text("Who can see it")
-            } footer: {
-                Text(who.footnote)
             }
 
             // Recipients live inside the choice that needs them, rather than being
@@ -222,9 +229,9 @@ struct PostRecordingView: View {
                 return
             }
         }
-        if let replyGroup, sendBack, let id = publisher.lastPublishedID {
-            do { try await DanceSagePlatform.shared.shareBack(groupID: replyGroup.id, videoID: id) }
-            catch let failure { self.error = "Posted, but could not send it back to \(replyGroup.name): \(failure.localizedDescription)" }
+        if replyTo != nil, sendBack, let id = publisher.lastPublishedID {
+            do { try await DanceSagePlatform.shared.sendAttempt(id: id) }
+            catch let failure { self.error = "Saved, but could not send it: \(failure.localizedDescription)" }
         }
         if let id = publisher.lastPublishedID { onPosted(id) }
         posted = true

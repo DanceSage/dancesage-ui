@@ -71,7 +71,12 @@ struct LessonDetailView: View {
                         .swipeActions(edge: .leading, allowsFullSwipe: false) {
                             if !attempt.isPosted {
                                 Button { postTarget = attempt } label: {
-                                    Label("Post", systemImage: "icloud.and.arrow.up")
+                                    Label("Save online", systemImage: "icloud.and.arrow.up")
+                                }
+                                .tint(.orange)
+                            } else if attempt.sentToTeacher != true {
+                                Button { Task { await send(attempt) } } label: {
+                                    Label("Send to teacher", systemImage: "paperplane.fill")
                                 }
                                 .tint(.orange)
                             }
@@ -79,7 +84,11 @@ struct LessonDetailView: View {
                         .contextMenu {
                             if !attempt.isPosted {
                                 Button { postTarget = attempt } label: {
-                                    Label("Post to Dance Sage", systemImage: "icloud.and.arrow.up")
+                                    Label("Save to my lessons online", systemImage: "icloud.and.arrow.up")
+                                }
+                            } else if attempt.sentToTeacher != true {
+                                Button { Task { await send(attempt) } } label: {
+                                    Label("Send to teacher", systemImage: "paperplane.fill")
                                 }
                             }
                         }
@@ -90,7 +99,7 @@ struct LessonDetailView: View {
                 Text("Your attempts")
             } footer: {
                 if !attempts.isEmpty {
-                    Text("Tap one to watch both skeletons together. Swipe right to post it, then choose who can see it — your teacher, for instance.")
+                    Text("Tap one to watch both skeletons together. Swipe right to save it online, then to send it to your teacher — only a saved attempt can be sent.")
                 }
             }
 
@@ -118,7 +127,8 @@ struct LessonDetailView: View {
                 videoURL: nil,
                 suggestedTitle: "\(lesson.title) — my attempt",
                 replyTo: lesson.sourceVideoID,
-                replyGroup: lesson.sourceGroupID.map { ($0, lesson.sourceGroupName ?? "the group") }
+                replyGroup: lesson.sourceGroupID.map { ($0, lesson.sourceGroupName ?? "the group") },
+                        replyTeacher: lesson.teacherName.isEmpty ? nil : lesson.teacherName
             ) { id in
                 var posted = attempt
                 posted.postedVideoID = id
@@ -226,8 +236,10 @@ struct LessonDetailView: View {
                     if attempt.mirrored {
                         Label("Mirrored", systemImage: "arrow.left.and.right")
                     }
-                    if attempt.isPosted {
-                        Label("Posted", systemImage: "icloud.fill")
+                    if attempt.sentToTeacher == true {
+                        Label("Sent to teacher", systemImage: "paperplane.fill")
+                    } else if attempt.isPosted {
+                        Label("Saved online", systemImage: "icloud.fill")
                     }
                 }
                 .font(.caption)
@@ -265,6 +277,30 @@ struct LessonDetailView: View {
             attempts = try LessonAttemptStore.shared.attempts(forLesson: lesson.id)
         } catch {
             attempts = []
+            errorMessage = error.localizedDescription
+        }
+        Task { await syncSent() }
+    }
+
+    /// Sending can happen from the web too; ask which attempts have gone.
+    private func syncSent() async {
+        guard attempts.contains(where: { $0.isPosted && $0.sentToTeacher != true }),
+              let sent = try? await DanceSagePlatform.shared.sentAttempts() else { return }
+        var changed = false
+        for a in attempts where a.postedVideoID.map(sent.contains) == true && a.sentToTeacher != true {
+            var updated = a; updated.sentToTeacher = true
+            if (try? LessonAttemptStore.shared.upsert(updated)) != nil { changed = true }
+        }
+        if changed, let fresh = try? LessonAttemptStore.shared.attempts(forLesson: lesson.id) { attempts = fresh }
+    }
+
+    private func send(_ attempt: LessonAttempt) async {
+        guard let id = attempt.postedVideoID else { return }
+        do {
+            try await DanceSagePlatform.shared.sendAttempt(id: id)
+            var updated = attempt; updated.sentToTeacher = true
+            attempts = try LessonAttemptStore.shared.upsert(updated)
+        } catch {
             errorMessage = error.localizedDescription
         }
     }

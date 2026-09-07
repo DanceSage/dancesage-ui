@@ -316,6 +316,28 @@ struct DanceSagePlatform {
         _ = try await send("v1/shared/\(grantID)/accept", body: [:])
     }
 
+    // MARK: - My lessons online
+
+    /// Sends a saved attempt to the teacher — the owner of the video it
+    /// answers — at once, no offer. Harmless to repeat.
+    func sendAttempt(id: Int) async throws {
+        _ = try await send("v1/lessons/\(id)/send", body: [:])
+    }
+
+    struct OnlineLesson: Decodable {
+        struct Attempt: Decodable { let id: Int; let sent: Bool }
+        struct Lesson: Decodable { let id: Int }
+        let lesson: Lesson
+        let attempts: [Attempt]
+    }
+
+    /// Which of your attempts have been sent, by post id.
+    func sentAttempts() async throws -> Set<Int> {
+        struct Wrapper: Decodable { let lessons: [OnlineLesson] }
+        let all = try JSONDecoder().decode(Wrapper.self, from: try await get("v1/lessons")).lessons
+        return Set(all.flatMap { $0.attempts }.filter(\.sent).map(\.id))
+    }
+
     // MARK: - Series
 
     func series() async throws -> [PlatformSeries] {

@@ -105,7 +105,7 @@ struct ComparisonResultsView: View {
                             CoachVoice.shared.stop()
                             showPost = true
                         } label: {
-                            Label(postedID == nil ? "Post to Dance Sage" : "Posted",
+                            Label(postedID == nil ? "Save to my lessons online" : "Saved online",
                                   systemImage: postedID == nil ? "icloud.and.arrow.up" : "checkmark.circle.fill")
                                 .font(.body.weight(.semibold))
                         }
@@ -116,9 +116,9 @@ struct ComparisonResultsView: View {
                         } else if saved == nil {
                             Text("Nothing is kept unless you save it. Save to replay it later from the lesson, and to post it.")
                         } else if postedID == nil {
-                            Text("Posting puts both skeletons on your profile. Choose who can see it — your teacher's handle, for instance — and they get this exact replay.")
+                            Text("Keeps both skeletons under My lessons, online and private — never on your profile. Send it to your teacher now, or later from here or from the web.")
                         } else {
-                            Text("On your profile. Change who can see it there at any time.")
+                            Text("Under My lessons online. Send it to your teacher from the lesson, or from the web.")
                         }
                     }
                 }
@@ -206,7 +206,8 @@ struct ComparisonResultsView: View {
                         videoURL: nil,
                         suggestedTitle: "\(lesson.title) — my attempt",
                         replyTo: lesson.sourceVideoID,
-                        replyGroup: lesson.sourceGroupID.map { ($0, lesson.sourceGroupName ?? "the group") }
+                        replyGroup: lesson.sourceGroupID.map { ($0, lesson.sourceGroupName ?? "the group") },
+                        replyTeacher: lesson.teacherName.isEmpty ? nil : lesson.teacherName
                     ) { id in
                         postedID = id
                         var posted = saved

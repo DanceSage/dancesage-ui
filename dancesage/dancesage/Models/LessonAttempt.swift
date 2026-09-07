@@ -30,6 +30,8 @@ struct LessonAttempt: Codable, Identifiable {
     let regions: [RegionScore]
     /// Optional so attempts saved before posting existed decode.
     var postedVideoID: Int?
+    /// Sent to the teacher, from here or from the web.
+    var sentToTeacher: Bool?
 
     init(lessonID: String, recording: DanceRecording, result: LessonComparator.Result) {
         self.id = UUID().uuidString
