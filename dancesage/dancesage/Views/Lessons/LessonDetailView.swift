@@ -259,8 +259,16 @@ struct LessonDetailView: View {
 
             Spacer()
 
-            Image(systemName: "play.circle")
-                .foregroundColor(.secondary)
+            // The next step, as a button — not something to discover by long-pressing.
+            if !attempt.isPosted {
+                Button("Save online") { postTarget = attempt }
+                    .font(.caption.weight(.semibold)).buttonStyle(.bordered).tint(.orange)
+            } else if attempt.sentToTeacher != true {
+                Button("Send to teacher") { Task { await send(attempt) } }
+                    .font(.caption.weight(.semibold)).buttonStyle(.borderedProminent).tint(.orange)
+            } else {
+                Image(systemName: "play.circle").foregroundColor(.secondary)
+            }
         }
     }
 

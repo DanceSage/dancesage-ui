@@ -9,6 +9,10 @@ struct LessonsListView: View {
     @State private var lessons: [Lesson] = []
     @State private var errorMessage = ""
     @State private var confirmDelete: Lesson?
+    /// What I teach: my videos shared as lessons, with students' attempts.
+    @State private var classes: [DanceSagePlatform.TeachingClass] = []
+    @State private var openedAttempt: PlatformVideo?
+    @State private var openedFrom = ""
 
     private let logoBackground = Color(
         red: 81.0 / 255.0,
@@ -37,6 +41,7 @@ struct LessonsListView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     header
+                    if !classes.isEmpty { teaching }
                     if lessons.isEmpty { empty } else { list }
                 }
                 .padding(.bottom, 30)
@@ -46,6 +51,11 @@ struct LessonsListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .onAppear(perform: loadLessons)
+        .task { classes = (try? await DanceSagePlatform.shared.classes()) ?? [] }
+        .refreshable { classes = (try? await DanceSagePlatform.shared.classes()) ?? [] }
+        .fullScreenCover(item: $openedAttempt) {
+            PlatformVideoDetailView(video: $0, teacherName: openedFrom)
+        }
         .alert("Lesson Error", isPresented: Binding(
             get: { !errorMessage.isEmpty },
             set: { if !$0 { errorMessage = "" } }
@@ -90,6 +100,62 @@ struct LessonsListView: View {
         }
         .padding(.top, 8)
         .padding(.bottom, 26)
+    }
+
+    /// The teacher's half: each video I shared as a lesson, its students, and
+    /// the attempts that came back. Tap an attempt for the replay.
+    private var teaching: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("I'm teaching")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(.white.opacity(0.6))
+                .textCase(.uppercase)
+                .padding(.leading, 6)
+            ForEach(classes) { c in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "graduationcap.fill").foregroundStyle(.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(c.lesson.title).font(.headline).foregroundStyle(.white).lineLimit(1)
+                            Text("\(c.students.filter(\.accepted).count)/\(c.students.count) students"
+                                 + (c.series.map { " · \($0.name)" } ?? "")
+                                 + " · \(c.attempts.count) attempt\(c.attempts.count == 1 ? "" : "s")")
+                                .font(.caption).foregroundStyle(.white.opacity(0.6))
+                        }
+                    }
+                    ForEach(c.attempts) { a in
+                        Button {
+                            openedFrom = a.by.display_name
+                            openedAttempt = a.asPlatformVideo
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.turn.down.right").font(.caption2)
+                                Text(a.by.display_name).font(.subheadline.weight(.semibold))
+                                Text("· \(a.title)").font(.subheadline).lineLimit(1)
+                                Spacer()
+                                Image(systemName: "chevron.right").font(.caption2)
+                            }
+                            .foregroundStyle(.white.opacity(0.9))
+                        }
+                    }
+                    if c.attempts.isEmpty {
+                        Text("No attempts yet.").font(.caption).foregroundStyle(.white.opacity(0.45))
+                    }
+                }
+                .padding(15)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 20))
+                .overlay { RoundedRectangle(cornerRadius: 20).stroke(.white.opacity(0.12)) }
+            }
+            Text("I'm learning")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(.white.opacity(0.6))
+                .textCase(.uppercase)
+                .padding(.leading, 6)
+                .padding(.top, 10)
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 12)
     }
 
     /// Lessons that came through a series sit in a folder named for it;

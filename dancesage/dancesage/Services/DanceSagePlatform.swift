@@ -17,6 +17,9 @@ struct PlatformVideo: Identifiable, Decodable {
     let pose2d_key: String
     let video_key: String
     let fps: Int
+    /// An attempt: the video it answers, and whether the student read mirrored.
+    var reply_to: Int? = nil
+    var mirrored: Bool? = nil
 
     var seconds: Int { fps > 0 ? frames / fps : 0 }
     var duration: String { String(format: "%d:%02d", seconds / 60, seconds % 60) }
@@ -58,6 +61,8 @@ struct PoseTrack: Decodable {
     /// When each frame was captured, when the uploader knew. Optional: older
     /// tracks and 3D tracks may not carry it.
     let t: [Double]?
+    /// An attempt: the student's own time at each frame, so their video follows.
+    let ta: [Double]?
 
     var joints: Int { j.first?.first?.count ?? 0 }
     var isTwoDimensional: Bool { (j.first?.first?.first?.count ?? 3) == 2 }
@@ -111,6 +116,8 @@ struct FeedVideo: Identifiable, Decodable {
     let group: GroupRef?
     /// The video this one is an attempt at, when it is.
     let reply_to: Int?
+    /// An attempt: the student read left/right flipped.
+    let mirrored: Bool?
     /// The series it came through, when it did.
     let series: GroupRef?
 
@@ -124,7 +131,7 @@ struct FeedVideo: Identifiable, Decodable {
         PlatformVideo(id: id, title: title, note: note, style: style, level: level,
                       visibility: visibility, frames: frames, has_video: has_video,
                       pose_key: pose_key, pose2d_key: pose2d_key,
-                      video_key: video_key, fps: fps)
+                      video_key: video_key, fps: fps, reply_to: reply_to, mirrored: mirrored)
     }
 }
 
@@ -353,6 +360,22 @@ struct DanceSagePlatform {
         struct Wrapper: Decodable { let lessons: [OnlineLesson] }
         let all = try JSONDecoder().decode(Wrapper.self, from: try await get("v1/lessons")).lessons
         return Set(all.flatMap { $0.attempts }.filter(\.sent).map(\.id))
+    }
+
+    /// What I teach: my videos that went out as lessons, with students' attempts.
+    struct TeachingClass: Identifiable, Decodable {
+        struct Student: Decodable { let handle: String?; let display_name: String; let accepted: Bool }
+        let lesson: FeedVideo
+        let students: [Student]
+        let attempts: [FeedVideo]
+        let series: FeedVideo.GroupRef?
+        let groups: [String]
+        var id: Int { lesson.id }
+    }
+
+    func classes() async throws -> [TeachingClass] {
+        struct Wrapper: Decodable { let classes: [TeachingClass] }
+        return try JSONDecoder().decode(Wrapper.self, from: try await get("v1/classes")).classes
     }
 
     // MARK: - Series

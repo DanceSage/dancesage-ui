@@ -40,6 +40,7 @@ struct PlatformVideoDetailView: View {
     /// A posted lesson attempt: two dancers on one clock. Opens in the same
     /// replay the student used, so the teacher sees what they saw.
     @State private var replay: (reference: DanceRecording, attempt: DanceRecording)?
+    @State private var replayVideos: (reference: URL?, attempt: URL?) = (nil, nil)
     @State private var showReplay = false
     @State private var sharedWith: [PlatformGrant] = []
     @State private var showShare = false
@@ -109,7 +110,10 @@ struct PlatformVideoDetailView: View {
             }
             .fullScreenCover(isPresented: $showReplay) {
                 if let replay {
-                    LessonOverlayView(reference: replay.reference, attempt: replay.attempt, mirrored: false, attemptLabel: "Student")
+                    LessonOverlayView(reference: replay.reference, attempt: replay.attempt,
+                                      mirrored: video.mirrored ?? false, attemptLabel: "Student",
+                                      referenceVideoURL: replayVideos.reference,
+                                      attemptVideoURL: replayVideos.attempt)
                 }
             }
         }
@@ -375,7 +379,7 @@ struct PlatformVideoDetailView: View {
         guard !video.pose2d_key.isEmpty,
               let raw = try? await DanceSagePlatform.shared.poseTrack(key: video.pose2d_key),
               raw.j.count == 2, raw.isTwoDimensional else { return }
-        func recording(_ dancer: [[[Double]]], named name: String) -> DanceRecording {
+        func recording(_ dancer: [[[Double]]], named name: String, times: [Double]?) -> DanceRecording {
             DanceRecording(
                 name: name,
                 keypoints: dancer.map { frame in
@@ -383,11 +387,32 @@ struct PlatformVideoDetailView: View {
                 },
                 mode: .styling,
                 fps: Double(max(raw.fps, 1)),
-                frameTimes: raw.t ?? [],
+                frameTimes: times ?? [],
                 hasVideo: false
             )
         }
-        replay = (recording(raw.j[0], named: "Teacher"), recording(raw.j[1], named: video.title))
+        // The student's frames sit on the teacher's clock; their own clock (ta)
+        // is what their video follows.
+        replay = (recording(raw.j[0], named: "Teacher", times: raw.t),
+                  recording(raw.j[1], named: video.title, times: raw.ta ?? raw.t))
+
+        // Both videos, when they exist and the viewer may see them: the lesson's
+        // (the teacher's own) and the attempt's (the student's camera).
+        async let teacherURL: URL? = {
+            guard let lessonID = video.reply_to else { return nil }
+            return await downloadVideo(id: lessonID, name: "lesson-\(lessonID)")
+        }()
+        async let studentURL: URL? = video.has_video ? await downloadVideo(id: video.id, name: "attempt-\(video.id)") : nil
+        replayVideos = (await teacherURL, await studentURL)
+    }
+
+    /// A post's video to a temporary file, for the replay's players.
+    private func downloadVideo(id: Int, name: String) async -> URL? {
+        guard let remote = try? await DanceSagePlatform.shared.playbackURL(videoID: id),
+              let (temp, _) = try? await URLSession.shared.download(from: remote) else { return nil }
+        let kept = FileManager.default.temporaryDirectory.appendingPathComponent("\(name).mov")
+        try? FileManager.default.removeItem(at: kept)
+        return (try? FileManager.default.moveItem(at: temp, to: kept)) != nil ? kept : nil
     }
 
     private func load() async {
