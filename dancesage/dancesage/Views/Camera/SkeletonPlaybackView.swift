@@ -343,65 +343,36 @@ struct SkeletonPlaybackView: View {
                 Spacer()
             }
             
-            // Bottom left: Frame counter
+            // The same bottom as every other player: play, the scrubber, the
+            // time, then speed. Nothing else down here.
             VStack {
                 Spacer()
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Frame")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                        Text(keypoints.isEmpty ? "0" : "\(currentFrame + 1)")
-                            .font(.system(size: 24, weight: .bold, design: .monospaced))
-                            .foregroundColor(chromeColor)
-                        Text("/ \(keypoints.count)")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                        
-                        Text(String(format: "%.2fs", currentTime))
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                            .padding(.top, 2)
-
-                        SpeedSlider(rate: $rate)
-                            .frame(width: 190)
-                            .padding(.top, 8)
-                            .padding(8)
-                            .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12))
-                    }
-                    .padding()
-                    
-                    Spacer()
-                }
-            }
-            
-            // Bottom right: Play/Reset buttons (vertical)
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    
-                    VStack(spacing: 20) {
-                        Button(action: {
+                VStack(spacing: 12) {
+                    HStack(spacing: 12) {
+                        Button {
                             togglePlayback()
-                        }) {
-                            Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                                .font(.system(size: 60))
-                                .foregroundColor(chromeColor)
+                        } label: {
+                            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                                .font(.title3)
+                                .foregroundStyle(.white)
+                                .frame(width: 34)
                         }
-                        
-                        Button(action: {
-                            resetPlayback()
-                        }) {
-                            Image(systemName: "arrow.counterclockwise.circle.fill")
-                                .font(.system(size: 50))
-                                .foregroundColor(chromeColor)
-                        }
+                        Slider(value: Binding(
+                            get: { currentTime },
+                            set: { seek(to: $0) }
+                        ), in: 0...max(duration, 0.1))
+                        .tint(.orange)
+                        Text(String(format: "%d:%02d", Int(currentTime) / 60, Int(currentTime) % 60))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.white.opacity(0.7))
                     }
-                    .padding(.trailing, 20)
-                    .padding(.bottom, 40)
+                    SpeedSlider(rate: $rate)
                 }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
+                .background(Color.black.opacity(0.6))
             }
+            .ignoresSafeArea(edges: .bottom)
 
             if isExporting {
                 Color.black.opacity(0.65)
@@ -709,6 +680,24 @@ struct SkeletonPlaybackView: View {
         }
     }
     
+    /// Jump the clock; if playing, keep playing from there.
+    func seek(to seconds: Double) {
+        let target = min(max(0, seconds), max(duration, 0))
+        playbackTime = target
+        if !effectiveFrameTimes.isEmpty {
+            currentFrame = effectiveFrameTimes.lastIndex(where: { $0 <= target }) ?? 0
+        }
+        playbackStartTime = target
+        if isPlaying { playbackStartedAt = Date() }
+        let cm = CMTime(seconds: target, preferredTimescale: 600)
+        audioPlayer?.seek(to: cm, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+            if self.isPlaying {
+                self.audioPlayer?.play()
+                self.audioPlayer?.rate = Float(self.rate)
+            }
+        }
+    }
+
     func resetPlayback() {
         isPlaying = false
         currentFrame = 0
