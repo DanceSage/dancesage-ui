@@ -76,15 +76,7 @@ final class LessonAttemptStore {
     }
 
     private func fileURL(forLesson lessonID: String) throws -> URL {
-        let root = try fileManager.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let directory = root
-            .appendingPathComponent("DanceSage", isDirectory: true)
-            .appendingPathComponent("Attempts", isDirectory: true)
+        let directory = try AccountScope.directory().appendingPathComponent("Attempts", isDirectory: true)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory.appendingPathComponent("\(lessonID).json")
     }

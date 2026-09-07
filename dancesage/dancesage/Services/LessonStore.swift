@@ -124,15 +124,7 @@ final class LessonStore {
     }
 
     private func lessonsURL() throws -> URL {
-        let root = try fileManager.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let directory = root.appendingPathComponent("DanceSage", isDirectory: true)
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appendingPathComponent("lessons.json")
+        try AccountScope.directory().appendingPathComponent("lessons.json")
     }
 
     private func encoder() -> JSONEncoder {
