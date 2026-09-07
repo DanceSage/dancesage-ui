@@ -57,9 +57,7 @@ struct LessonOverlayView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            if sideBySide {
-                sideBySideStage
-            } else {
+            if !sideBySide {
                 overlaidStage
             }
 
@@ -105,7 +103,13 @@ struct LessonOverlayView: View {
                 .background(Color.black.opacity(0.6), in: Capsule())
                 .padding(.top, 8)
 
-                Spacer()
+                if sideBySide {
+                    sideBySideStage
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(.vertical, 10)
+                } else {
+                    Spacer()
+                }
 
                 controls
                     .padding(.horizontal, 28)
@@ -150,34 +154,42 @@ struct LessonOverlayView: View {
         }
     }
 
-    /// Two portrait panels. Skeletons are drawn in their own frames so they
-    /// sit on their own bodies; the student's colours still come from the
-    /// aligned comparison, swapped back onto the right limbs when mirrored.
+    /// Two portrait panels of exactly the same size, as large as the space
+    /// allows. Over video, each skeleton is drawn in its own frame so it sits
+    /// on its own body. Without video, the student is drawn at the teacher's
+    /// size and place, so the two read at one scale. Colours always come from
+    /// the aligned comparison, swapped back onto the right limbs when mirrored.
     private var sideBySideStage: some View {
         let refPose = PoseFeedback.interpolatedPose(of: reference, at: playbackTime)
-        let rawAttPose = PoseFeedback.interpolatedPose(
-            of: attempt,
-            at: PoseFeedback.attemptTime(forReferenceTime: playbackTime, reference: reference, attempt: attempt)
-        )
+        let attTime = PoseFeedback.attemptTime(forReferenceTime: playbackTime, reference: reference, attempt: attempt)
+        let rawAttPose = PoseFeedback.interpolatedPose(of: attempt, at: attTime)
         let aligned = attemptPose(at: playbackTime, alignedTo: refPose)
+
         var errors: [Double]?
         if let refPose, let aligned {
             errors = PoseFeedback.jointErrors(reference: refPose, alignedAttempt: aligned)
         }
-        if mirrored, let graded = errors { errors = PoseFeedback.swapSides(graded) }
+        let studentOverVideo = showVideo && attemptPlayer != nil
+        let studentPose = studentOverVideo ? rawAttPose : aligned
+        let studentErrors = (studentOverVideo && mirrored) ? errors.map(PoseFeedback.swapSides) : errors
 
-        return HStack(spacing: 4) {
-            panel(pose: showTeacher ? refPose : nil, errors: nil, player: referencePlayer)
-            panel(pose: showStudent ? rawAttPose : nil, errors: errors, player: attemptPlayer)
+        return GeometryReader { geo in
+            let gap: CGFloat = 4
+            let width = min((geo.size.width - gap) / 2, geo.size.height * 9 / 16)
+            let height = width * 16 / 9
+            HStack(spacing: gap) {
+                panel(pose: showTeacher ? refPose : nil, errors: nil, player: referencePlayer)
+                    .frame(width: width, height: height)
+                panel(pose: showStudent ? studentPose : nil, errors: studentErrors, player: attemptPlayer)
+                    .frame(width: width, height: height)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
-        .padding(.horizontal, 4)
-        .padding(.top, 150)
-        .padding(.bottom, 300)
     }
 
     private func panel(pose: [CGPoint]?, errors: [Double]?, player: AVPlayer?) -> some View {
         ZStack {
-            Color.white.opacity(0.04)
+            Color.white.opacity(0.05)
             if showVideo, let player {
                 VideoSurface(player: player)
             }
@@ -185,9 +197,7 @@ struct LessonOverlayView: View {
                 SkeletonOverlay(keypoints: [pose], videoAspect: 9.0 / 16.0, errorLevels: errors)
             }
         }
-        .aspectRatio(9.0 / 16.0, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 14))
-        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Controls
