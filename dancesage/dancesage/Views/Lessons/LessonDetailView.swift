@@ -86,9 +86,16 @@ struct LessonDetailView: View {
                                 Button { postTarget = attempt } label: {
                                     Label("Save to my lessons online", systemImage: "icloud.and.arrow.up")
                                 }
-                            } else if attempt.sentToTeacher != true {
-                                Button { Task { await send(attempt) } } label: {
-                                    Label("Send to teacher", systemImage: "paperplane.fill")
+                            } else {
+                                if attempt.sentToTeacher != true {
+                                    Button { Task { await send(attempt) } } label: {
+                                        Label("Send to teacher", systemImage: "paperplane.fill")
+                                    }
+                                }
+                                // The online copy is replaced — for attempts saved before
+                                // the web replay needed the video.
+                                Button { Task { await replaceOnline(attempt) } } label: {
+                                    Label("Re-upload with video", systemImage: "arrow.triangle.2.circlepath.icloud")
                                 }
                             }
                         }
@@ -294,6 +301,18 @@ struct LessonDetailView: View {
             if (try? LessonAttemptStore.shared.upsert(updated)) != nil { changed = true }
         }
         if changed, let fresh = try? LessonAttemptStore.shared.attempts(forLesson: lesson.id) { attempts = fresh }
+    }
+
+    /// Drops the online copy and posts this attempt again in the current shape.
+    private func replaceOnline(_ attempt: LessonAttempt) async {
+        if let id = attempt.postedVideoID {
+            try? await DanceSagePlatform.shared.deleteVideo(id: id)
+        }
+        var fresh = attempt
+        fresh.postedVideoID = nil
+        fresh.sentToTeacher = nil
+        if let list = try? LessonAttemptStore.shared.upsert(fresh) { attempts = list }
+        postTarget = fresh
     }
 
     private func send(_ attempt: LessonAttempt) async {
