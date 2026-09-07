@@ -202,6 +202,21 @@ struct PlatformVideoDetailView: View {
                 tag(video.style)
                 tag(video.level)
                 Spacer()
+                // Someone else's public clip: pass it on. Their private clip shared
+                // with you: nothing — it is theirs to share, not yours.
+                if onVisibilityChange == nil, video.visibility == "public" {
+                    Button {
+                        player?.pause()
+                        showShare = true
+                    } label: {
+                        Label("Share…", systemImage: "person.badge.plus")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(.orange.opacity(0.16), in: Capsule())
+                    }
+                }
                 if let onVisibilityChange {
                     Menu {
                         Button("Public") { Task { await onVisibilityChange("public") } }
