@@ -7,9 +7,21 @@ struct ComparisonResultsView: View {
     let attemptName: String
     let reference: DanceRecording
     let attempt: DanceRecording
+    /// The attempt as it would be saved. Nothing is kept until the student
+    /// taps Save; sending is only possible after that.
+    var lesson: Lesson? = nil
+    var candidate: LessonAttempt? = nil
+    /// A fresh capture waiting on the student's decision: moved into place on
+    /// Save, deleted if the sheet closes without one.
+    var pendingVideoURL: URL? = nil
+    var referenceVideoURL: URL? = nil
 
     @State private var showOverlay = false
     @State private var coachText: String?
+    @State private var saved: LessonAttempt?
+    @State private var saveError = ""
+    @State private var showPost = false
+    @State private var postedID: Int?
     @Environment(\.dismiss) private var dismiss
 
     private func speakFeedback() {
@@ -51,6 +63,16 @@ struct ComparisonResultsView: View {
                         }
                         .font(.caption)
                         .foregroundColor(.secondary)
+                        // The measurements behind the number, so a strict score
+                        // reads as a fact rather than a mood.
+                        HStack(spacing: 12) {
+                            Label(String(format: "typically %.0f° off", result.typicalDeviation), systemImage: "angle")
+                            if result.meanLagSeconds >= 0.05 {
+                                Label(String(format: "%.1f s behind", result.meanLagSeconds), systemImage: "hourglass")
+                            }
+                        }
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
@@ -65,7 +87,40 @@ struct ComparisonResultsView: View {
                             .font(.body.weight(.semibold))
                     }
                 } footer: {
-                    Text("Both skeletons on one screen, synced to the beat — teacher in cyan, you in gold.")
+                    Text("Both skeletons on one screen. Scrub, slow it down, and jump to your worst moments.")
+                }
+
+                if lesson != nil, candidate != nil {
+                    Section {
+                        Button {
+                            save()
+                        } label: {
+                            Label(saved == nil ? "Save This Attempt" : "Saved",
+                                  systemImage: saved == nil ? "square.and.arrow.down" : "checkmark.circle.fill")
+                                .font(.body.weight(.semibold))
+                        }
+                        .disabled(saved != nil)
+
+                        Button {
+                            CoachVoice.shared.stop()
+                            showPost = true
+                        } label: {
+                            Label(postedID == nil ? "Post to Dance Sage" : "Posted",
+                                  systemImage: postedID == nil ? "icloud.and.arrow.up" : "checkmark.circle.fill")
+                                .font(.body.weight(.semibold))
+                        }
+                        .disabled(saved == nil || postedID != nil)
+                    } footer: {
+                        if !saveError.isEmpty {
+                            Text(saveError).foregroundColor(.red)
+                        } else if saved == nil {
+                            Text("Nothing is kept unless you save it. Save to replay it later from the lesson, and to post it.")
+                        } else if postedID == nil {
+                            Text("Posting puts both skeletons on your profile. Choose who can see it — your teacher's handle, for instance — and they get this exact replay.")
+                        } else {
+                            Text("On your profile. Change who can see it there at any time.")
+                        }
+                    }
                 }
 
                 Section("What to work on") {
@@ -129,14 +184,59 @@ struct ComparisonResultsView: View {
             }
             .onDisappear {
                 CoachVoice.shared.stop()
+                if saved == nil, let pendingVideoURL {
+                    try? FileManager.default.removeItem(at: pendingVideoURL)
+                }
             }
             .fullScreenCover(isPresented: $showOverlay) {
                 LessonOverlayView(
                     reference: reference,
                     attempt: attempt,
-                    mirrored: result.mirrored
+                    mirrored: result.mirrored,
+                    referenceVideoURL: referenceVideoURL,
+                    attemptVideoURL: attemptVideoURL
                 )
             }
+            .sheet(isPresented: $showPost) {
+                if let lesson, let saved {
+                    PostRecordingView(
+                        keypoints: PoseFeedback.overlayTrack(reference: lesson.recording, attempt: saved.recording, mirrored: saved.mirrored),
+                        frameTimes: lesson.recording.effectiveFrameTimes,
+                        fps: lesson.recording.effectiveFPS,
+                        videoURL: nil,
+                        suggestedTitle: "\(lesson.title) — my attempt"
+                    ) { id in
+                        postedID = id
+                        var posted = saved
+                        posted.postedVideoID = id
+                        try? LessonAttemptStore.shared.upsert(posted)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Where the student's video is right now: still pending, or already in
+    /// the library (a saved attempt, or a recording compared from the shelf).
+    private var attemptVideoURL: URL? {
+        if saved == nil, let pendingVideoURL { return pendingVideoURL }
+        return RecordingStore.shared.existingVideoURL(for: attempt)
+    }
+
+    private func save() {
+        guard let candidate, saved == nil else { return }
+        do {
+            if let pendingVideoURL {
+                let home = RecordingStore.shared.videoURL(for: candidate.recording)
+                try FileManager.default.createDirectory(at: home.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? FileManager.default.removeItem(at: home)
+                try FileManager.default.moveItem(at: pendingVideoURL, to: home)
+            }
+            try LessonAttemptStore.shared.add(candidate)
+            saved = candidate
+            saveError = ""
+        } catch {
+            saveError = "Couldn't save: \(error.localizedDescription)"
         }
     }
 }

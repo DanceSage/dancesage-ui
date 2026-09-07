@@ -61,7 +61,7 @@ struct LessonsListView: View {
             Button("Remove", role: .destructive) { delete(lesson) }
             Button("Keep", role: .cancel) { confirmDelete = nil }
         } message: { lesson in
-            Text("“\(lesson.title)” is removed from this iPhone. Your own recordings are not affected.")
+            Text("“\(lesson.title)” and your practice attempts for it are removed from this iPhone. Your own recordings are not affected.")
         }
     }
 

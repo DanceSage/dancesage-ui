@@ -148,7 +148,11 @@ struct GhostPracticeView: View {
                 lessonName: lesson.title,
                 attemptName: "Ghost practice",
                 reference: lesson.recording,
-                attempt: box.attempt
+                attempt: box.attempt,
+                lesson: lesson,
+                candidate: box.candidate,
+                pendingVideoURL: box.videoURL,
+                referenceVideoURL: RecordingStore.shared.existingVideoURL(for: lesson.recording)
             )
         }
         .alert("Camera Error", isPresented: Binding(
@@ -176,7 +180,7 @@ struct GhostPracticeView: View {
         // Candidate ghost poses: now and slightly in the past (reaction lag).
         var ghostCandidates: [[CGPoint]] = []
         let currentTime = ghostTime
-        for offset in [0.0, 0.2, 0.4] {
+        for offset in LessonComparator.Strictness.lagOffsets {
             if let pose = ghostPose(at: max(0, currentTime - offset)) {
                 ghostCandidates.append(pose)
             }
@@ -282,12 +286,11 @@ struct GhostPracticeView: View {
         captureActive = false
         ghostRunning = false
         poseDetector.stopRecording()
-        // The practice video itself isn't kept — the attempt is the skeleton.
-        try? FileManager.default.removeItem(at: url)
 
         let keypoints = poseDetector.recordedKeypoints
         let frameTimes = poseDetector.recordedFrameTimes
         guard keypoints.count >= 8 else {
+            try? FileManager.default.removeItem(at: url)
             captureError = "Not enough of your dancing was captured. Keep your whole body in frame and try again."
             return
         }
@@ -302,7 +305,7 @@ struct GhostPracticeView: View {
             frameTimes: frameTimes,
             beats: lesson.recording.beats ?? [],
             bpm: lesson.recording.bpm ?? 0,
-            hasVideo: false,
+            hasVideo: true, // kept beside the skeleton if the student saves
             cameraPosition: cameraPosition == .front ? "front" : "back"
         )
 
@@ -311,8 +314,16 @@ struct GhostPracticeView: View {
                 reference: lesson.recording,
                 attempt: attempt
             )
-            resultBox = GhostResultBox(result: result, attempt: attempt)
+            // Nothing is kept yet: the results sheet offers Save, and only a
+            // saved attempt keeps its video and can be replayed later or posted.
+            resultBox = GhostResultBox(
+                result: result,
+                attempt: attempt,
+                candidate: LessonAttempt(lessonID: lesson.id, recording: attempt, result: result),
+                videoURL: url
+            )
         } catch {
+            try? FileManager.default.removeItem(at: url)
             captureError = error.localizedDescription
         }
     }
@@ -326,5 +337,9 @@ struct GhostPracticeView: View {
 private struct GhostResultBox: Identifiable {
     let result: LessonComparator.Result
     let attempt: DanceRecording
+    /// Ready to save, if the student chooses to.
+    let candidate: LessonAttempt
+    /// The camera capture, still in the temporary folder until saved.
+    let videoURL: URL?
     let id = UUID()
 }

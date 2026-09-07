@@ -55,6 +55,9 @@ struct PoseTrack: Decodable {
     let fps: Int
     let frames: Int
     let j: [[[[Double]]]]
+    /// When each frame was captured, when the uploader knew. Optional: older
+    /// tracks and 3D tracks may not carry it.
+    let t: [Double]?
 
     var joints: Int { j.first?.first?.count ?? 0 }
     var isTwoDimensional: Bool { (j.first?.first?.first?.count ?? 3) == 2 }
@@ -276,3 +279,4 @@ struct DanceSagePlatform {
         }
     }
 }
+

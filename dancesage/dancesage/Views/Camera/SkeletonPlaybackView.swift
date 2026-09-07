@@ -2,15 +2,7 @@ import SwiftUI
 import Combine
 import AVFoundation
 
-private enum PlaybackDisplayMode: String, CaseIterable, Identifiable {
-    case video = "Video"
-    case skeleton = "Skeleton"
-    case both = "Both"
-
-    var id: Self { self }
-}
-
-private struct VideoSurface: UIViewRepresentable {
+struct VideoSurface: UIViewRepresentable {
     let player: AVPlayer
 
     func makeUIView(context: Context) -> PlayerView {
@@ -57,7 +49,7 @@ struct SkeletonPlaybackView: View {
     @State private var saveError = ""
     @State private var saveResultMessage = ""
     @State private var isSaving = false
-    @State private var displayMode: PlaybackDisplayMode = .both
+    @State private var displayMode: ViewMode = .both
     @State private var videoAspect: CGFloat = 9.0 / 16.0
     @State private var videoDuration: Double = 0
     @State private var playbackTime: Double = 0
@@ -66,6 +58,8 @@ struct SkeletonPlaybackView: View {
     @State private var exportedVideo: ExportedVideo?
     @State private var exportError = ""
     @State private var lessonAddedName = ""
+    @State private var namingLesson = false
+    @State private var newLessonName = ""
     @StateObject private var beatDetector = BeatDetector()
     @State private var detectedBeats: [Double] = []
     @State private var detectedBPM: Double = 0
@@ -224,7 +218,8 @@ struct SkeletonPlaybackView: View {
                             if !keypoints.isEmpty {
                                 Section("Lesson") {
                                     Button {
-                                        addToMyLessons()
+                                        newLessonName = lessonName
+                                        namingLesson = true
                                     } label: {
                                         Label("Add to My Lessons", systemImage: "graduationcap")
                                     }
@@ -280,28 +275,7 @@ struct SkeletonPlaybackView: View {
                 }
 
                 if videoURL != nil {
-                    HStack(spacing: 8) {
-                        ForEach(PlaybackDisplayMode.allCases) { mode in
-                            Button {
-                                displayMode = mode
-                            } label: {
-                                Text(mode.rawValue)
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .background(
-                                        displayMode == mode ? Color.blue : Color.black.opacity(0.78),
-                                        in: RoundedRectangle(cornerRadius: 10)
-                                    )
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .stroke(.white.opacity(0.8), lineWidth: 1)
-                                    }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 48)
+                    ViewModePicker(mode: $displayMode)
                 }
 
                 if isProcessing {
@@ -432,6 +406,13 @@ struct SkeletonPlaybackView: View {
         .sheet(item: $exportedVideo) { export in
             ActivityView(url: export.url)
         }
+        .alert("Name this lesson", isPresented: $namingLesson) {
+            TextField("Lesson name", text: $newLessonName)
+            Button("Save") { addToMyLessons(named: newLessonName) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This is how it appears in Lessons — for you, and for anyone you send it to.")
+        }
         .alert("Added to Lessons", isPresented: Binding(
             get: { !lessonAddedName.isEmpty },
             set: { if !$0 { lessonAddedName = "" } }
@@ -537,11 +518,12 @@ struct SkeletonPlaybackView: View {
         recordingName.isEmpty ? "Lesson \(Date().formatted(date: .abbreviated, time: .shortened))" : recordingName
     }
 
-    func addToMyLessons() {
+    func addToMyLessons(named name: String) {
         do {
             let lesson = try LessonStore.shared.addLesson(
                 recording: currentRecording(named: lessonName),
-                teacherName: ""
+                teacherName: "",
+                name: name
             )
             lessonAddedName = lesson.title
         } catch {

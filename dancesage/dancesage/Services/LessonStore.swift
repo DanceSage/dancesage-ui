@@ -33,8 +33,8 @@ final class LessonStore {
     /// Adds one of the dancer's own recordings straight into the lesson library —
     /// the one-phone path, no file sharing involved.
     @discardableResult
-    func addLesson(recording: DanceRecording, teacherName: String) throws -> Lesson {
-        let lesson = Lesson(teacherName: teacherName, note: "", recording: recording)
+    func addLesson(recording: DanceRecording, teacherName: String, name: String? = nil) throws -> Lesson {
+        let lesson = Lesson(name: name, teacherName: teacherName, note: "", recording: recording)
         var lessons = try load()
         lessons.append(lesson)
         try save(lessons)
@@ -66,10 +66,32 @@ final class LessonStore {
         return lesson
     }
 
+    /// Adds a lesson that arrived inside a shared attempt, unless the library
+    /// already holds one with that id — the teacher's own copy wins.
+    @discardableResult
+    func insertIfMissing(_ lesson: Lesson) throws -> Lesson {
+        var lessons = try load()
+        if let existing = lessons.first(where: { $0.id == lesson.id }) { return existing }
+        lessons.append(lesson)
+        try save(lessons)
+        return lesson
+    }
+
+    /// Removes one lesson by id, and its practice attempts with it.
+    func delete(id: String) throws {
+        var lessons = try load()
+        guard let index = lessons.firstIndex(where: { $0.id == id }) else { return }
+        lessons.remove(at: index)
+        try? LessonAttemptStore.shared.deleteAll(forLesson: id)
+        try save(lessons)
+    }
+
+    /// Removes lessons and, best-effort, the practice attempts recorded against them.
     func delete(at offsets: IndexSet) throws -> [Lesson] {
         var lessons = try load()
         for index in offsets.sorted(by: >) where lessons.indices.contains(index) {
-            lessons.remove(at: index)
+            let removed = lessons.remove(at: index)
+            try? LessonAttemptStore.shared.deleteAll(forLesson: removed.id)
         }
         try save(lessons)
         return lessons

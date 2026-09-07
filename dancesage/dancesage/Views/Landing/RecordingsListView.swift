@@ -6,6 +6,8 @@ struct RecordingsListView: View {
     @State private var errorMessage = ""
     @State private var exportedVideo: ExportedVideo?
     @State private var lessonAddedName = ""
+    @State private var lessonToName: DanceRecording?
+    @State private var newLessonName = ""
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
@@ -57,7 +59,8 @@ struct RecordingsListView: View {
                                         }
                                     }
                                     Button {
-                                        addToMyLessons(recording)
+                                        newLessonName = recording.name
+                                        lessonToName = recording
                                     } label: {
                                         Label("Add to My Lessons", systemImage: "graduationcap")
                                     }
@@ -107,6 +110,19 @@ struct RecordingsListView: View {
             .sheet(item: $exportedVideo) { export in
                 ActivityView(url: export.url)
             }
+            .alert("Name this lesson", isPresented: Binding(
+                get: { lessonToName != nil },
+                set: { if !$0 { lessonToName = nil } }
+            )) {
+                TextField("Lesson name", text: $newLessonName)
+                Button("Save") {
+                    if let recording = lessonToName { addToMyLessons(recording, named: newLessonName) }
+                    lessonToName = nil
+                }
+                Button("Cancel", role: .cancel) { lessonToName = nil }
+            } message: {
+                Text("This is how it appears in Lessons — for you, and for anyone you send it to.")
+            }
             .alert("Added to Lessons", isPresented: Binding(
                 get: { !lessonAddedName.isEmpty },
                 set: { if !$0 { lessonAddedName = "" } }
@@ -135,10 +151,10 @@ struct RecordingsListView: View {
         }
     }
     
-    func addToMyLessons(_ recording: DanceRecording) {
+    func addToMyLessons(_ recording: DanceRecording, named name: String) {
         do {
-            _ = try LessonStore.shared.addLesson(recording: recording, teacherName: "")
-            lessonAddedName = recording.name
+            let lesson = try LessonStore.shared.addLesson(recording: recording, teacherName: "", name: name)
+            lessonAddedName = lesson.title
         } catch {
             errorMessage = error.localizedDescription
         }

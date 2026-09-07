@@ -1,49 +1,66 @@
 import SwiftUI
 import Combine
+import AVFoundation
 
-/// Plays the reference and the attempt as two skeletons on one canvas.
+/// Plays the reference and the attempt together — overlaid on one canvas, or
+/// side by side, each over its own video where one exists.
 ///
-/// The reference drives the clock; the attempt is warped onto it beat-by-beat
-/// (or by duration when beats are missing), then anchored hip-to-hip and scaled
-/// torso-to-torso each frame so the two bodies overlap even when the dancers
-/// stood in different places at different distances from the camera.
+/// Overlaid: the reference drives the clock; the attempt is warped onto it
+/// beat-by-beat (or by duration when beats are missing), then anchored
+/// hip-to-hip and scaled torso-to-torso each frame so the two bodies overlap
+/// even when the dancers stood in different places at different distances
+/// from the camera.
+///
+/// Side by side: each skeleton stays in its own frame, on top of its own video
+/// when the phone has it. The student's joints are still graded against the
+/// teacher, so red means the same thing in both views.
+///
+/// Under the scrubber sits an error timeline: where the strip goes red is where
+/// the student drifted. Slow the replay down, tap a peak, and see exactly which
+/// limb was off at that moment.
 struct LessonOverlayView: View {
     let reference: DanceRecording
     let attempt: DanceRecording
     /// From the comparison result: the attempt reads better left/right flipped.
     let mirrored: Bool
+    /// "You" for the student; a teacher watching a shared attempt sees "Student".
+    var attemptLabel: String = "You"
+    /// Videos, when this phone has them. A lesson file never carries the
+    /// teacher's; the student's is kept only when the attempt was saved.
+    var referenceVideoURL: URL? = nil
+    var attemptVideoURL: URL? = nil
 
     @State private var playbackTime: Double = 0
     @State private var isPlaying = true
+    @State private var lastTick: Date?
+    @State private var timeline: AttemptTimeline?
+    @State private var showTeacher = true
+    @State private var showStudent = true
+    @State private var sideBySide = false
+    @State private var showVideo = true
+    @State private var referencePlayer: AVPlayer?
+    @State private var attemptPlayer: AVPlayer?
+    @AppStorage("replayRate") private var rate: Double = 1
     @Environment(\.dismiss) private var dismiss
 
     private let timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
+    private let rates: [Double] = [0.25, 0.5, 1, 2]
+    private let teacherColor = Color(red: 0.20, green: 0.95, blue: 0.92)
 
     private var duration: Double {
         max(reference.effectiveFrameTimes.last ?? 0, 0.1)
     }
 
+    private var hasAnyVideo: Bool { referenceVideoURL != nil || attemptVideoURL != nil }
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            let refPose = pose(of: reference, at: playbackTime)
-            let attPose = pose(of: attempt, at: attemptTime(forReferenceTime: playbackTime))
-                .map { PoseFeedback.align(attempt: $0, to: refPose, mirrored: mirrored) }
-
-            if let refPose {
-                SkeletonOverlay(keypoints: [refPose], videoAspect: 9.0 / 16.0)
-                    .ignoresSafeArea()
-            }
-            if let attPose {
-                SkeletonOverlay(
-                    keypoints: [attPose],
-                    videoAspect: 9.0 / 16.0,
-                    errorLevels: refPose.flatMap {
-                        PoseFeedback.jointErrors(reference: $0, alignedAttempt: attPose)
-                    }
-                )
-                .ignoresSafeArea()
+            if sideBySide {
+                sideBySideStage
+            } else {
+                overlaidStage
             }
 
             VStack {
@@ -59,108 +76,320 @@ struct LessonOverlayView: View {
                     Spacer()
                 }
 
-                // Legend uses the same palette order SkeletonOverlay assigns.
-                HStack(spacing: 18) {
-                    Label("Teacher", systemImage: "circle.fill")
-                        .foregroundColor(Color(red: 0.20, green: 0.95, blue: 0.92))
-                    Label("Good", systemImage: "circle.fill")
-                        .foregroundColor(.green)
+                // Each skeleton is a switch: see the teacher alone, the student
+                // alone, or both. Colours match what SkeletonOverlay draws.
+                HStack(spacing: 10) {
+                    skeletonToggle("Teacher", color: teacherColor, isOn: $showTeacher)
+                    skeletonToggle(attemptLabel, color: .green, isOn: $showStudent)
                     Label("Fix", systemImage: "circle.fill")
                         .foregroundColor(.red)
+                        .font(.system(size: 14, weight: .semibold))
+                        .padding(.horizontal, 6)
                 }
-                .font(.system(size: 14, weight: .semibold))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
                 .background(Color.black.opacity(0.6), in: Capsule())
 
-                Spacer()
-
-                VStack(spacing: 14) {
-                    Slider(
-                        value: $playbackTime,
-                        in: 0...duration,
-                        onEditingChanged: { editing in
-                            if editing { isPlaying = false }
-                        }
-                    )
-                    .tint(.orange)
-
-                    HStack(spacing: 34) {
-                        Button {
-                            playbackTime = 0
-                            isPlaying = true
-                        } label: {
-                            Image(systemName: "arrow.counterclockwise.circle.fill")
-                                .font(.system(size: 44))
-                                .foregroundColor(.white)
-                        }
-                        Button {
-                            isPlaying.toggle()
-                        } label: {
-                            Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                                .font(.system(size: 58))
-                                .foregroundColor(.white)
+                // Overlaid or side by side — and, side by side, with the videos.
+                HStack(spacing: 10) {
+                    layoutToggle("Overlaid", systemImage: "figure.2", isOn: !sideBySide) { sideBySide = false }
+                    layoutToggle("Side by side", systemImage: "rectangle.split.2x1", isOn: sideBySide) { sideBySide = true }
+                    if sideBySide, hasAnyVideo {
+                        layoutToggle("Video", systemImage: showVideo ? "video.fill" : "video.slash", isOn: showVideo) {
+                            showVideo.toggle()
                         }
                     }
                 }
-                .padding(.horizontal, 28)
-                .padding(.bottom, 28)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(0.6), in: Capsule())
+                .padding(.top, 8)
+
+                Spacer()
+
+                controls
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 28)
             }
         }
-        .onReceive(timer) { _ in
-            guard isPlaying else { return }
-            playbackTime += 1.0 / 60.0
+        .onAppear {
+            timeline = AttemptTimeline.build(reference: reference, attempt: attempt, mirrored: mirrored)
+            lastTick = Date()
+            referencePlayer = referenceVideoURL.map(makePlayer)
+            attemptPlayer = attemptVideoURL.map(makePlayer)
+        }
+        .onDisappear {
+            referencePlayer?.pause()
+            attemptPlayer?.pause()
+        }
+        .onReceive(timer) { now in
+            tick(now)
+        }
+    }
+
+    // MARK: - Stages
+
+    private var overlaidStage: some View {
+        let refPose = PoseFeedback.interpolatedPose(of: reference, at: playbackTime)
+        let attPose = attemptPose(at: playbackTime, alignedTo: refPose)
+        return ZStack {
+            if showTeacher, let refPose {
+                SkeletonOverlay(keypoints: [refPose], videoAspect: 9.0 / 16.0)
+                    .ignoresSafeArea()
+            }
+            if showStudent, let attPose {
+                SkeletonOverlay(
+                    keypoints: [attPose],
+                    videoAspect: 9.0 / 16.0,
+                    errorLevels: refPose.flatMap {
+                        PoseFeedback.jointErrors(reference: $0, alignedAttempt: attPose)
+                    }
+                )
+                .ignoresSafeArea()
+            }
+        }
+    }
+
+    /// Two portrait panels. Skeletons are drawn in their own frames so they
+    /// sit on their own bodies; the student's colours still come from the
+    /// aligned comparison, swapped back onto the right limbs when mirrored.
+    private var sideBySideStage: some View {
+        let refPose = PoseFeedback.interpolatedPose(of: reference, at: playbackTime)
+        let rawAttPose = PoseFeedback.interpolatedPose(
+            of: attempt,
+            at: PoseFeedback.attemptTime(forReferenceTime: playbackTime, reference: reference, attempt: attempt)
+        )
+        let aligned = attemptPose(at: playbackTime, alignedTo: refPose)
+        var errors: [Double]?
+        if let refPose, let aligned {
+            errors = PoseFeedback.jointErrors(reference: refPose, alignedAttempt: aligned)
+        }
+        if mirrored, let graded = errors { errors = PoseFeedback.swapSides(graded) }
+
+        return HStack(spacing: 4) {
+            panel(pose: showTeacher ? refPose : nil, errors: nil, player: referencePlayer)
+            panel(pose: showStudent ? rawAttPose : nil, errors: errors, player: attemptPlayer)
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 150)
+        .padding(.bottom, 300)
+    }
+
+    private func panel(pose: [CGPoint]?, errors: [Double]?, player: AVPlayer?) -> some View {
+        ZStack {
+            Color.white.opacity(0.04)
+            if showVideo, let player {
+                VideoSurface(player: player)
+            }
+            if let pose {
+                SkeletonOverlay(keypoints: [pose], videoAspect: 9.0 / 16.0, errorLevels: errors)
+            }
+        }
+        .aspectRatio(9.0 / 16.0, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Controls
+
+    private func skeletonToggle(_ title: String, color: Color, isOn: Binding<Bool>) -> some View {
+        Button {
+            isOn.wrappedValue.toggle()
+        } label: {
+            Label(title, systemImage: isOn.wrappedValue ? "circle.fill" : "circle")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(isOn.wrappedValue ? color : .white.opacity(0.45))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(isOn.wrappedValue ? color.opacity(0.18) : Color.clear, in: Capsule())
+        }
+        .accessibilityLabel("\(title) skeleton")
+        .accessibilityValue(isOn.wrappedValue ? "shown" : "hidden")
+    }
+
+    private func layoutToggle(_ title: String, systemImage: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(isOn ? .orange : .white.opacity(0.45))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(isOn ? Color.orange.opacity(0.18) : Color.clear, in: Capsule())
+        }
+    }
+
+    private var controls: some View {
+        VStack(spacing: 12) {
+            readouts
+
+            if let timeline {
+                ErrorTimelineStrip(
+                    timeline: timeline,
+                    currentTime: playbackTime,
+                    onSeek: { seek(to: $0) },
+                    onPeakTap: { seek(to: $0.time) }
+                )
+                .padding(.horizontal, 14) // line up with the slider's track, not its thumb
+            }
+
+            Slider(
+                value: $playbackTime,
+                in: 0...duration,
+                onEditingChanged: { editing in
+                    if editing { isPlaying = false }
+                }
+            )
+            .tint(.orange)
+
+            HStack(spacing: 30) {
+                Button {
+                    if let peak = timeline?.peak(before: playbackTime) { seek(to: peak.time) }
+                } label: {
+                    Image(systemName: "backward.end.alt.fill")
+                        .font(.system(size: 26))
+                }
+                .disabled(timeline?.peak(before: playbackTime) == nil)
+                .accessibilityLabel("Previous problem moment")
+
+                Button {
+                    playbackTime = 0
+                    isPlaying = true
+                } label: {
+                    Image(systemName: "arrow.counterclockwise.circle.fill")
+                        .font(.system(size: 40))
+                }
+
+                Button {
+                    isPlaying.toggle()
+                } label: {
+                    Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 58))
+                }
+
+                Button {
+                    if let peak = timeline?.peak(after: playbackTime) { seek(to: peak.time) }
+                } label: {
+                    Image(systemName: "forward.end.alt.fill")
+                        .font(.system(size: 26))
+                }
+                .disabled(timeline?.peak(after: playbackTime) == nil)
+                .accessibilityLabel("Next problem moment")
+            }
+            .foregroundColor(.white)
+
+            rateRow
+        }
+    }
+
+    private var readouts: some View {
+        HStack {
+            HStack(spacing: 6) {
+                Text("\(formatted(playbackTime)) / \(formatted(duration))")
+                if let count = LessonComparator.countLabel(forRefTime: playbackTime, reference: reference) {
+                    Text("·")
+                    Text("count \(count)")
+                }
+            }
+            .foregroundColor(.white)
+
+            Spacer()
+
+            if let timeline, let peak = timeline.nearestPeak(to: playbackTime) ?? timeline.worstPeak {
+                let count = peak.count.map { " · count \($0)" } ?? ""
+                Text("worst at \(formatted(peak.time))\(count)")
+                    .foregroundColor(.red.opacity(0.9))
+            }
+        }
+        .font(.system(size: 13, weight: .semibold).monospacedDigit())
+    }
+
+    private var rateRow: some View {
+        HStack(spacing: 6) {
+            ForEach(rates, id: \.self) { value in
+                Button {
+                    rate = value
+                } label: {
+                    Text(label(for: value))
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(rate == value ? .black : .white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(rate == value ? Color.orange : Color.white.opacity(0.12), in: Capsule())
+                }
+            }
+        }
+    }
+
+    // MARK: - Playback
+
+    private func tick(_ now: Date) {
+        defer { lastTick = now }
+        if isPlaying, let lastTick {
+            playbackTime += now.timeIntervalSince(lastTick) * rate
             if playbackTime >= duration { playbackTime = 0 } // loop for practice
         }
+        syncVideos()
     }
 
-    // MARK: - Pose lookup
-
-    private func pose(of recording: DanceRecording, at seconds: Double) -> [CGPoint]? {
-        let times = recording.effectiveFrameTimes
-        guard !times.isEmpty else { return nil }
-        var low = 0
-        var high = times.count - 1
-        if seconds > times[0] {
-            while low < high {
-                let middle = (low + high + 1) / 2
-                if times[middle] <= seconds { low = middle } else { high = middle - 1 }
-            }
-        }
-        return recording.keypoints[safe: low]?.first
+    private func seek(to seconds: Double) {
+        isPlaying = false
+        playbackTime = min(max(0, seconds), duration)
     }
 
-    /// Warps reference time onto the attempt's clock, beat interval by beat interval.
-    private func attemptTime(forReferenceTime time: Double) -> Double {
-        guard let refBeats = reference.beats, let attBeats = attempt.beats,
-              refBeats.count >= 2, attBeats.count >= 2 else {
-            let refDuration = reference.effectiveFrameTimes.last ?? 1
-            let attDuration = attempt.effectiveFrameTimes.last ?? 1
-            guard refDuration > 0 else { return 0 }
-            return time / refDuration * attDuration
-        }
-
-        let n = min(refBeats.count, attBeats.count)
-        if time <= refBeats[0] {
-            // Before the first beat: shift by the difference in lead-in.
-            return max(0, attBeats[0] - (refBeats[0] - time))
-        }
-        for i in 0..<(n - 1) {
-            if time <= refBeats[i + 1] {
-                let span = refBeats[i + 1] - refBeats[i]
-                guard span > 0 else { return attBeats[i] }
-                let fraction = (time - refBeats[i]) / span
-                return attBeats[i] + fraction * (attBeats[i + 1] - attBeats[i])
-            }
-        }
-        // Past the last shared beat: continue at the attempt's final tempo.
-        return attBeats[n - 1] + (time - refBeats[n - 1])
+    /// Keeps each video on the replay's clock: playing at the replay's speed,
+    /// paused when it pauses, and nudged whenever it drifts. The student's video
+    /// follows the warped attempt time, so it stays under the student's skeleton.
+    private func syncVideos() {
+        let attTime = PoseFeedback.attemptTime(forReferenceTime: playbackTime, reference: reference, attempt: attempt)
+        sync(referencePlayer, to: playbackTime)
+        sync(attemptPlayer, to: attTime)
     }
 
-}
+    private func sync(_ player: AVPlayer?, to target: Double) {
+        guard let player, sideBySide, showVideo else { player?.pause(); return }
+        let current = player.currentTime().seconds
+        let drift = current.isFinite ? abs(current - target) : .infinity
+        let tolerance = isPlaying ? 0.15 : 0.04
+        if drift > tolerance {
+            player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
+                        toleranceBefore: .zero, toleranceAfter: .zero)
+        }
+        if isPlaying {
+            if player.rate != Float(rate) { player.rate = Float(rate) }
+        } else if player.rate != 0 {
+            player.pause()
+        }
+    }
 
-private extension Array {
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
+    private func makePlayer(_ url: URL) -> AVPlayer {
+        let player = AVPlayer(url: url)
+        player.isMuted = true // the replay has one clock; two soundtracks would fight it
+        player.actionAtItemEnd = .pause
+        return player
+    }
+
+    /// The student's pose at a reference time, on the teacher's body: warped
+    /// onto the attempt clock, flipped if the comparator read it mirrored, then
+    /// hip-anchored and torso-scaled. Same transform the error timeline uses.
+    private func attemptPose(at time: Double, alignedTo refPose: [CGPoint]?) -> [CGPoint]? {
+        let attTime = PoseFeedback.attemptTime(forReferenceTime: time, reference: reference, attempt: attempt)
+        guard var pose = PoseFeedback.interpolatedPose(of: attempt, at: attTime) else { return nil }
+        if mirrored { pose = PoseFeedback.mirrored(pose) }
+        return PoseFeedback.align(attempt: pose, to: refPose, mirrored: false)
+    }
+
+    // MARK: - Formatting
+
+    private func formatted(_ seconds: Double) -> String {
+        let clamped = max(0, seconds)
+        return String(format: "%d:%04.1f", Int(clamped) / 60, clamped.truncatingRemainder(dividingBy: 60))
+    }
+
+    private func label(for rate: Double) -> String {
+        switch rate {
+        case 0.25: return "¼x"
+        case 0.5: return "½x"
+        default: return "\(Int(rate))x"
+        }
     }
 }

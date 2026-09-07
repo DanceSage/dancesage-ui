@@ -87,6 +87,8 @@ struct SkeletonTrackView: View {
     var yaw: Double = 0.3
     var lineWidth: CGFloat = 3
     var glow: Bool = true
+    /// Dancers switched off by the viewer.
+    var hidden: Set<Int> = []
 
     var body: some View {
         if still {
@@ -123,7 +125,7 @@ struct SkeletonTrackView: View {
     }
 
     private func draw(at f: Double, in context: GraphicsContext, size: CGSize) {
-        for (which, dancer) in track.dancers.enumerated() {
+        for (which, dancer) in track.dancers.enumerated() where !hidden.contains(which) {
             let joints = pose(dancer, at: f)
             guard !joints.isEmpty else { continue }
             let points = joints.map { project($0, in: size) }

@@ -10,6 +10,11 @@ struct LessonDetailView: View {
     @State private var resultBox: ComparisonResultBox?
     @State private var comparedAttempt: DanceRecording?
     @State private var errorMessage = ""
+    @State private var attempts: [LessonAttempt] = []
+    @State private var replayAttempt: LessonAttempt?
+    @State private var postTarget: LessonAttempt?
+    @State private var confirmRemove = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         List {
@@ -50,9 +55,89 @@ struct LessonDetailView: View {
             } footer: {
                 Text("Dance With the Teacher shows the teacher's skeleton over your live camera — follow it, and you're scored the moment it ends. Or compare any recording you saved earlier.")
             }
+
+            Section {
+                if attempts.isEmpty {
+                    Text("No attempts yet. Dance With the Teacher to record one.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                } else {
+                    ForEach(attempts) { attempt in
+                        Button {
+                            replayAttempt = attempt
+                        } label: {
+                            attemptRow(attempt)
+                        }
+                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                            if !attempt.isPosted {
+                                Button { postTarget = attempt } label: {
+                                    Label("Post", systemImage: "icloud.and.arrow.up")
+                                }
+                                .tint(.orange)
+                            }
+                        }
+                        .contextMenu {
+                            if !attempt.isPosted {
+                                Button { postTarget = attempt } label: {
+                                    Label("Post to Dance Sage", systemImage: "icloud.and.arrow.up")
+                                }
+                            }
+                        }
+                    }
+                    .onDelete(perform: deleteAttempts)
+                }
+            } header: {
+                Text("Your attempts")
+            } footer: {
+                if !attempts.isEmpty {
+                    Text("Tap one to watch both skeletons together. Swipe right to post it, then choose who can see it — your teacher, for instance.")
+                }
+            }
+
+            Section {
+                Button(role: .destructive) {
+                    confirmRemove = true
+                } label: {
+                    Label("Remove Lesson", systemImage: "trash")
+                }
+            } footer: {
+                Text("Removes this lesson and your attempts at it from this iPhone. Your own recordings are not affected.")
+            }
+        }
+        .confirmationDialog("Remove “\(lesson.title)”?", isPresented: $confirmRemove, titleVisibility: .visible) {
+            Button("Remove Lesson", role: .destructive) { removeLesson() }
+            Button("Keep", role: .cancel) {}
+        } message: {
+            Text("This lesson and \(attempts.count == 1 ? "its attempt" : "its \(attempts.count) attempts") are removed from this iPhone.")
+        }
+        .sheet(item: $postTarget) { attempt in
+            PostRecordingView(
+                keypoints: PoseFeedback.overlayTrack(reference: lesson.recording, attempt: attempt.recording, mirrored: attempt.mirrored),
+                frameTimes: lesson.recording.effectiveFrameTimes,
+                fps: lesson.recording.effectiveFPS,
+                videoURL: nil,
+                suggestedTitle: "\(lesson.title) — my attempt"
+            ) { id in
+                var posted = attempt
+                posted.postedVideoID = id
+                if let list = try? LessonAttemptStore.shared.upsert(posted) { attempts = list }
+            }
         }
         .navigationTitle(lesson.title)
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear(perform: loadAttempts)
+        .onChange(of: showGhostPractice) { _, showing in
+            if !showing { loadAttempts() }
+        }
+        .fullScreenCover(item: $replayAttempt) { attempt in
+            LessonOverlayView(
+                reference: lesson.recording,
+                attempt: attempt.recording,
+                mirrored: attempt.mirrored,
+                referenceVideoURL: RecordingStore.shared.existingVideoURL(for: lesson.recording),
+                attemptVideoURL: RecordingStore.shared.existingVideoURL(for: attempt.recording)
+            )
+        }
         .fullScreenCover(isPresented: $showReference) {
             SkeletonPlaybackView(
                 keypoints: lesson.recording.keypoints,
@@ -80,9 +165,15 @@ struct LessonDetailView: View {
                     lessonName: lesson.title,
                     attemptName: comparedAttempt.name,
                     reference: lesson.recording,
-                    attempt: comparedAttempt
+                    attempt: comparedAttempt,
+                    lesson: lesson,
+                    candidate: box.candidate,
+                    referenceVideoURL: RecordingStore.shared.existingVideoURL(for: lesson.recording)
                 )
             }
+        }
+        .onChange(of: resultBox?.id) { _, box in
+            if box == nil { loadAttempts() } // the sheet may have saved one
         }
         .alert("Could Not Compare", isPresented: Binding(
             get: { !errorMessage.isEmpty },
@@ -96,15 +187,91 @@ struct LessonDetailView: View {
 
     private func runComparison(attempt: DanceRecording) {
         do {
+            let result = try LessonComparator.compare(
+                reference: lesson.recording,
+                attempt: attempt
+            )
             comparedAttempt = attempt
             resultBox = ComparisonResultBox(
-                result: try LessonComparator.compare(
-                    reference: lesson.recording,
-                    attempt: attempt
-                )
+                result: result,
+                candidate: LessonAttempt(lessonID: lesson.id, recording: attempt, result: result)
             )
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Attempts
+
+    private func attemptRow(_ attempt: LessonAttempt) -> some View {
+        HStack(spacing: 14) {
+            Text("\(attempt.score)")
+                .font(.headline.monospacedDigit())
+                .foregroundColor(scoreColor(attempt.score))
+                .frame(width: 44, height: 44)
+                .background(scoreColor(attempt.score).opacity(0.15), in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(attempt.createdAt, format: .dateTime.month().day().hour().minute())
+                    .font(.body)
+                    .foregroundColor(.primary)
+
+                HStack(spacing: 8) {
+                    Text(attempt.recording.name)
+                    if attempt.mirrored {
+                        Label("Mirrored", systemImage: "arrow.left.and.right")
+                    }
+                    if attempt.isPosted {
+                        Label("Posted", systemImage: "icloud.fill")
+                    }
+                }
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+
+            }
+
+            Spacer()
+
+            Image(systemName: "play.circle")
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private func scoreColor(_ score: Int) -> Color {
+        switch score {
+        case 80...: return .green
+        case 55..<80: return .yellow
+        default: return .orange
+        }
+    }
+
+    private func removeLesson() {
+        do {
+            try LessonStore.shared.delete(id: lesson.id)
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadAttempts() {
+        do {
+            attempts = try LessonAttemptStore.shared.attempts(forLesson: lesson.id)
+        } catch {
+            attempts = []
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func deleteAttempts(at offsets: IndexSet) {
+        for index in offsets.sorted(by: >) where attempts.indices.contains(index) {
+            do {
+                attempts = try LessonAttemptStore.shared.delete(id: attempts[index].id, lessonID: lesson.id)
+            } catch {
+                errorMessage = error.localizedDescription
+                return
+            }
         }
     }
 }
@@ -112,6 +279,7 @@ struct LessonDetailView: View {
 /// Identifiable wrapper so a comparison result can drive a sheet.
 private struct ComparisonResultBox: Identifiable {
     let result: LessonComparator.Result
+    let candidate: LessonAttempt
     let id = UUID()
 }
 

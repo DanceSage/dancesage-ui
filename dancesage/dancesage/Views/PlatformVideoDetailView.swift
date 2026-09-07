@@ -13,18 +13,18 @@ struct PlatformVideoDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var track: SkeletonTrack?
     @State private var player: AVPlayer?
-    @State private var mode: Mode = .both
+    @State private var mode: ViewMode = .both
+    @State private var hiddenDancers: Set<Int> = []
     @State private var playhead: Double = 0
     @State private var isPlaying = true
     @State private var observer: Any?
     @State private var yaw: Double = 17 * .pi / 180     // the web's default Turn
     @State private var dragStart: Double = 0
     @State private var videoAspect: CGFloat?
-
-    enum Mode: String, CaseIterable, Identifiable {
-        case both = "Both", video = "Video", skeleton = "Skeleton"
-        var id: String { rawValue }
-    }
+    /// A posted lesson attempt: two dancers on one clock. Opens in the same
+    /// replay the student used, so the teacher sees what they saw.
+    @State private var replay: (reference: DanceRecording, attempt: DanceRecording)?
+    @State private var showReplay = false
 
     private var hasVideo: Bool { video.has_video && player != nil }
 
@@ -45,9 +45,24 @@ struct PlatformVideoDetailView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                 }
+                if replay != nil {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            player?.pause()
+                            showReplay = true
+                        } label: {
+                            Label("Lesson Replay", systemImage: "figure.2")
+                        }
+                    }
+                }
+            }
+            .fullScreenCover(isPresented: $showReplay) {
+                if let replay {
+                    LessonOverlayView(reference: replay.reference, attempt: replay.attempt, mirrored: false, attemptLabel: "Student")
+                }
             }
         }
-        .task { await load() }
+        .task { await load(); await loadReplay() }
         .onDisappear { teardown() }
     }
 
@@ -60,17 +75,17 @@ struct PlatformVideoDetailView: View {
                     // Player and overlay share one aspect-fitted box, so a normalised
                     // 2D track lands on the body instead of on the letterboxing.
                     ZStack {
-                        if mode != .skeleton, let player {
+                        if mode.showsVideo, let player {
                             VideoPlayer(player: player).allowsHitTesting(false)
                         }
-                        if let track, mode != .video {
+                        if let track, mode.showsSkeleton {
                             SkeletonTrackView(track: track, time: playhead,
-                                              yaw: yaw, lineWidth: 3)
+                                              yaw: yaw, lineWidth: 3, hidden: hiddenDancers)
                         }
                     }
                     .aspectRatio(aspect, contentMode: .fit)
                 } else if let track {
-                    SkeletonTrackView(track: track, time: nil, yaw: yaw, lineWidth: 4)
+                    SkeletonTrackView(track: track, time: nil, yaw: yaw, lineWidth: 4, hidden: hiddenDancers)
                 }
                 if track == nil && !hasVideo {
                     ProgressView().tint(.white)
@@ -96,11 +111,16 @@ struct PlatformVideoDetailView: View {
     private var controls: some View {
         VStack(spacing: 14) {
             if hasVideo {
-                Picker("", selection: $mode) {
-                    ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .colorScheme(.dark)
+                ViewModePicker(mode: $mode)
+            }
+
+            if let track, track.dancers.count > 1 {
+                DancerToggles(
+                    labels: replay != nil ? ["Teacher", "Student"]
+                        : (0..<track.dancers.count).map { "Dancer \($0 + 1)" },
+                    colors: SkeletonTrack.colours,
+                    hidden: $hiddenDancers
+                )
             }
 
             if hasVideo, let track {
@@ -205,6 +225,27 @@ struct PlatformVideoDetailView: View {
     }
 
     // MARK: - Wiring
+
+    /// Only a two-person 2D track is a lesson attempt; anything else has no
+    /// teacher to compare against.
+    private func loadReplay() async {
+        guard !video.pose2d_key.isEmpty,
+              let raw = try? await DanceSagePlatform.shared.poseTrack(key: video.pose2d_key),
+              raw.j.count == 2, raw.isTwoDimensional else { return }
+        func recording(_ dancer: [[[Double]]], named name: String) -> DanceRecording {
+            DanceRecording(
+                name: name,
+                keypoints: dancer.map { frame in
+                    [frame.map { CGPoint(x: $0.count > 0 ? $0[0] : -1, y: $0.count > 1 ? $0[1] : -1) }]
+                },
+                mode: .styling,
+                fps: Double(max(raw.fps, 1)),
+                frameTimes: raw.t ?? [],
+                hasVideo: false
+            )
+        }
+        replay = (recording(raw.j[0], named: "Teacher"), recording(raw.j[1], named: video.title))
+    }
 
     private func load() async {
         // The overlay track when there is video to sit on, the 3D one otherwise.

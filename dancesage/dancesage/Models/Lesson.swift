@@ -17,15 +17,20 @@ struct Lesson: Codable, Identifiable {
     let note: String
     let createdAt: Date
     let recording: DanceRecording
+    /// What the dancer called it when they made it. Optional so lessons saved
+    /// before naming existed still decode — those fall back to the recording.
+    let name: String?
 
-    init(teacherName: String, note: String, recording: DanceRecording) {
+    init(name: String? = nil, teacherName: String, note: String, recording: DanceRecording) {
         self.id = UUID().uuidString
         self.formatVersion = Lesson.currentFormatVersion
         self.teacherName = teacherName
         self.note = note
         self.createdAt = Date()
         self.recording = recording
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.name = trimmed.isEmpty ? nil : trimmed
     }
 
-    var title: String { recording.name }
+    var title: String { name ?? recording.name }
 }
