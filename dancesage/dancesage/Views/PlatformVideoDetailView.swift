@@ -19,6 +19,8 @@ struct PlatformVideoDetailView: View {
     /// from it remembers, so attempts can go straight back there.
     var groupID: Int? = nil
     var groupName: String? = nil
+    /// The series it came through, when opened from one.
+    var seriesName: String? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var track: SkeletonTrack?
@@ -354,7 +356,8 @@ struct PlatformVideoDetailView: View {
             }
             let lesson = try LessonStore.shared.addLesson(
                 recording: recording, teacherName: teacherName, name: name,
-                sourceVideoID: video.id, sourceGroupID: groupID, sourceGroupName: groupName)
+                sourceVideoID: video.id, sourceGroupID: groupID, sourceGroupName: groupName,
+                sourceSeriesName: seriesName)
             lessonMessage = "“\(lesson.title)” is in your Lessons\(downloaded == nil ? "" : ", with the video"). Open Lessons to practise it."
         } catch {
             lessonMessage = "Couldn't add: \(error.localizedDescription)"

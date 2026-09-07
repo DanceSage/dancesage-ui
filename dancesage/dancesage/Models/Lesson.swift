@@ -26,6 +26,8 @@ struct Lesson: Codable, Identifiable {
     var sourceVideoID: Int?
     var sourceGroupID: Int?
     var sourceGroupName: String?
+    /// The series it came through, when it did — a folder in Lessons.
+    var sourceSeriesName: String?
 
     init(name: String? = nil, teacherName: String, note: String, recording: DanceRecording) {
         self.id = UUID().uuidString

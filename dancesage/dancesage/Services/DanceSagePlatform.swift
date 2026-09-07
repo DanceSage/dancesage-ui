@@ -111,6 +111,8 @@ struct FeedVideo: Identifiable, Decodable {
     let group: GroupRef?
     /// The video this one is an attempt at, when it is.
     let reply_to: Int?
+    /// The series it came through, when it did.
+    let series: GroupRef?
 
     struct GroupRef: Decodable { let id: Int; let name: String }
 
@@ -150,6 +152,34 @@ struct PlatformGroup: Identifiable, Decodable {
     let owner: Member?
 }
 
+/// A folder in My videos, shared as a standing offer.
+struct PlatformSeries: Identifiable, Decodable {
+    struct Who: Identifiable, Decodable {
+        let grant_id: Int
+        let handle: String?
+        let display_name: String
+        let accepted: Bool
+        let group: String?
+        var id: Int { grant_id }
+    }
+    let id: Int
+    let name: String
+    let video_count: Int
+    let videos: [FeedVideo]
+    let owner: PlatformAttemptPerson
+    /// Owner's view: who has it.
+    let shared_with: [Who]?
+    /// Viewer's view: the standing offer behind it.
+    let series_grant_id: Int?
+    let group: FeedVideo.GroupRef?
+}
+
+struct PlatformAttemptPerson: Decodable {
+    let handle: String?
+    let display_name: String
+    var name: String { display_name.isEmpty ? (handle.map { "@\($0)" } ?? "Dancer") : display_name }
+}
+
 /// A group's wall: what went through it, both ways.
 struct GroupWall: Decodable {
     struct Lesson: Identifiable, Decodable {
@@ -176,7 +206,14 @@ struct GroupWall: Decodable {
         let members: [PlatformGroup.Member]
         let owner: PlatformGroup.Member
     }
+    struct SeriesGroup: Identifiable, Decodable {
+        let id: Int
+        let name: String
+        let videos: [Lesson]
+    }
     let group: Head
+    /// Videos that came through a series, by series.
+    let series: [SeriesGroup]
     let lessons: [Lesson]
     let replies: [FeedVideo]
 }
@@ -264,6 +301,9 @@ struct DanceSagePlatform {
         let from: [SharedFrom]
         /// What is waiting on your yes or no.
         let offers: [SharedFrom]
+        /// Series you accepted, and series waiting on you.
+        let series: [PlatformSeries]
+        let series_offers: [PlatformSeries]
         var offerCount: Int { offers.reduce(0) { $0 + $1.videos.count } }
         var sharedCount: Int { from.reduce(0) { $0 + $1.videos.count } }
     }
@@ -274,6 +314,56 @@ struct DanceSagePlatform {
 
     func accept(grantID: Int) async throws {
         _ = try await send("v1/shared/\(grantID)/accept", body: [:])
+    }
+
+    // MARK: - Series
+
+    func series() async throws -> [PlatformSeries] {
+        struct Wrapper: Decodable { let series: [PlatformSeries] }
+        return try JSONDecoder().decode(Wrapper.self, from: try await get("v1/series")).series
+    }
+
+    func createSeries(name: String) async throws -> PlatformSeries {
+        try JSONDecoder().decode(PlatformSeries.self, from: try await send("v1/series", body: ["name": name]))
+    }
+
+    func addToSeries(seriesID: Int, videoID: Int) async throws {
+        _ = try await send("v1/series/\(seriesID)/videos", body: ["video_id": videoID])
+    }
+
+    func removeFromSeries(seriesID: Int, videoID: Int) async throws {
+        try await delete("v1/series/\(seriesID)/videos/\(videoID)")
+    }
+
+    func deleteSeries(id: Int) async throws {
+        try await delete("v1/series/\(id)")
+    }
+
+    /// Share a series with a person, or with everyone in a group.
+    func grant(seriesID: Int, handle: String? = nil, groupID: Int? = nil) async throws {
+        var body: [String: Any] = ["series_id": seriesID]
+        if let handle { body["handle"] = handle }
+        if let groupID { body["group_id"] = groupID }
+        _ = try await send("v1/grants", body: body)
+    }
+
+    func revokeSeriesGrant(id: Int) async throws {
+        try await delete("v1/series/grants/\(id)")
+    }
+
+    func acceptSeries(grantID: Int) async throws {
+        _ = try await send("v1/shared/series/\(grantID)/accept", body: [:])
+    }
+
+    func declineSeries(grantID: Int) async throws {
+        try await delete("v1/shared/series/\(grantID)")
+    }
+
+    private func delete(_ path: String) async throws {
+        var req = try request(path)
+        req.httpMethod = "DELETE"
+        let (data, response) = try await session.data(for: req)
+        try check(response, data)
     }
 
     // MARK: - Who can see your shared videos

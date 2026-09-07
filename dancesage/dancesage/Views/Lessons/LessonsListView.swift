@@ -92,23 +92,46 @@ struct LessonsListView: View {
         .padding(.bottom, 26)
     }
 
+    /// Lessons that came through a series sit in a folder named for it;
+    /// the rest follow, loose.
     private var list: some View {
-        VStack(spacing: 12) {
-            ForEach(lessons) { lesson in
-                NavigationLink {
-                    LessonDetailView(lesson: lesson)
-                } label: {
-                    row(lesson)
-                }
-                .buttonStyle(.plain)
-                .contextMenu {
-                    Button("Remove lesson", role: .destructive) {
-                        confirmDelete = lesson
-                    }
+        let folders = Dictionary(grouping: lessons.filter { $0.sourceSeriesName != nil }, by: { $0.sourceSeriesName! })
+        let loose = lessons.filter { $0.sourceSeriesName == nil }
+        return VStack(spacing: 12) {
+            ForEach(folders.keys.sorted(), id: \.self) { name in
+                VStack(alignment: .leading, spacing: 10) {
+                    Label(name, systemImage: "folder.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white.opacity(0.7))
+                        .padding(.leading, 6)
+                    ForEach(folders[name] ?? []) { lesson in lessonLink(lesson) }
                 }
             }
+            if !folders.isEmpty, !loose.isEmpty {
+                Text("Other lessons")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white.opacity(0.7))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 6)
+                    .padding(.top, 6)
+            }
+            ForEach(loose) { lesson in lessonLink(lesson) }
         }
         .padding(.horizontal, 20)
+    }
+
+    private func lessonLink(_ lesson: Lesson) -> some View {
+        NavigationLink {
+            LessonDetailView(lesson: lesson)
+        } label: {
+            row(lesson)
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button("Remove lesson", role: .destructive) {
+                confirmDelete = lesson
+            }
+        }
     }
 
     private func row(_ lesson: Lesson) -> some View {

@@ -19,6 +19,12 @@ struct PlatformProfileView: View {
     @State private var offers: [SharedFrom] = []
     /// Who can see which of your posts — painted on every card.
     @State private var grants: [PlatformGrant] = []
+    /// Your series: folders above the loose posts.
+    @State private var series: [PlatformSeries] = []
+    @State private var sharingSeries: PlatformSeries?
+    @State private var filing: PlatformVideo?
+    @State private var newSeriesName = ""
+    @State private var namingSeries = false
     @State private var showDelete = false
     /// What is waiting on a yes. One alert per view is all SwiftUI reliably
     /// presents; two of them means one silently never fires.
@@ -114,6 +120,37 @@ struct PlatformProfileView: View {
         .navigationDestination(isPresented: $showSharing) { SharingView() }
         .sheet(item: $shareOne) { video in
             ShareVideoView(video: video) { await load() }
+        }
+        .sheet(item: $sharingSeries) { s in
+            SeriesShareView(series: s) { await load() }
+        }
+        .confirmationDialog("Add to which series?", isPresented: Binding(get: { filing != nil }, set: { if !$0 { filing = nil } }), titleVisibility: .visible) {
+            ForEach(series) { s in
+                Button(s.name) {
+                    if let v = filing { Task { try? await DanceSagePlatform.shared.addToSeries(seriesID: s.id, videoID: v.id); await load() } }
+                    filing = nil
+                }
+            }
+            Button("New series…") { newSeriesName = ""; namingSeries = true }
+            Button("Cancel", role: .cancel) { filing = nil }
+        }
+        .alert("New series", isPresented: $namingSeries) {
+            TextField("A class, a course, a term", text: $newSeriesName)
+            Button("Create") {
+                let name = newSeriesName.trimmingCharacters(in: .whitespaces)
+                let pending = filing
+                filing = nil
+                guard !name.isEmpty else { return }
+                Task {
+                    if let s = try? await DanceSagePlatform.shared.createSeries(name: name), let v = pending {
+                        try? await DanceSagePlatform.shared.addToSeries(seriesID: s.id, videoID: v.id)
+                    }
+                    await load()
+                }
+            }
+            Button("Cancel", role: .cancel) { filing = nil }
+        } message: {
+            Text("Share a series once; everyone who accepts gets every video in it, and every one you add later.")
         }
         .sheet(isPresented: $showDelete) {
             DeleteAccountView(postCount: profile?.videos.count ?? 0)
@@ -311,6 +348,56 @@ struct PlatformProfileView: View {
                     .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
                 }
 
+                // Series first: a folder each, with its videos and its own share.
+                if !series.isEmpty || !p.videos.isEmpty {
+                    HStack {
+                        Text("My videos").font(.headline).foregroundStyle(.white)
+                        Spacer()
+                        Button {
+                            newSeriesName = ""; namingSeries = true
+                        } label: {
+                            Label("New series", systemImage: "folder.badge.plus").font(.caption.weight(.semibold))
+                        }
+                        .tint(.orange)
+                    }
+                }
+                ForEach(series) { s in
+                    DisclosureGroup {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Button {
+                                sharingSeries = s
+                            } label: {
+                                Label(s.shared_with?.isEmpty == false ? "Share series · \(s.shared_with!.count) have it" : "Share series",
+                                      systemImage: "paperplane.fill")
+                                    .font(.caption.weight(.semibold)).foregroundStyle(.orange)
+                            }
+                            if s.videos.isEmpty {
+                                Text("Empty. Use “Add to series” on a post.").font(.caption).foregroundStyle(.white.opacity(0.5))
+                            }
+                            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                                ForEach(s.videos) { v in
+                                    FeedCard(video: v, showByline: false) { opened = v.asPlatformVideo }
+                                        .contextMenu {
+                                            Button("Take out of this series", role: .destructive) {
+                                                Task { try? await DanceSagePlatform.shared.removeFromSeries(seriesID: s.id, videoID: v.id); await load() }
+                                            }
+                                        }
+                                }
+                            }
+                        }
+                        .padding(.top, 6)
+                    } label: {
+                        HStack {
+                            Label(s.name, systemImage: "folder.fill").font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                            Spacer()
+                            Text("\(s.video_count) video\(s.video_count == 1 ? "" : "s")").font(.caption).foregroundStyle(.white.opacity(0.55))
+                        }
+                    }
+                    .tint(.orange)
+                    .padding(12)
+                    .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
+                }
+
                 if p.videos.isEmpty && recordings.isEmpty {
                     empty
                 } else {
@@ -338,6 +425,8 @@ struct PlatformProfileView: View {
                                 pending = .post(video)
                             } onShare: {
                                 shareOne = video
+                            } onFile: {
+                                filing = video
                             }
                         }
                     }
@@ -509,6 +598,7 @@ struct PlatformProfileView: View {
                 sharedWithMe = mail?.from ?? []
                 offers = mail?.offers ?? []
                 grants = (try? await DanceSagePlatform.shared.grants()) ?? []
+                series = (try? await DanceSagePlatform.shared.series()) ?? []
                 error = nil
                 loading = false
                 return
@@ -566,6 +656,7 @@ private struct VideoCard: View {
     let onOpen: () -> Void
     let onDelete: () -> Void
     let onShare: () -> Void
+    var onFile: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -620,6 +711,7 @@ private struct VideoCard: View {
                 Button("Private") { Task { await onVisibility("private") } }
                 Divider()
                 Button("Share…", systemImage: "person.badge.plus", action: onShare)
+                Button("Add to series…", systemImage: "folder.badge.plus", action: onFile)
                 Button("Delete post", role: .destructive, action: onDelete)
             } label: {
                 HStack(spacing: 4) {

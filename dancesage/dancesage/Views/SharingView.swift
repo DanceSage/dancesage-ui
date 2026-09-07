@@ -17,6 +17,9 @@ struct SharingView: View {
     @State private var grants: [PlatformGrant] = []
     @State private var inbox: [SharedFrom] = []
     @State private var offers: [SharedFrom] = []
+    @State private var seriesOffers: [PlatformSeries] = []
+    @State private var seriesIn: [PlatformSeries] = []
+    @State private var openedSeries: String?
     @State private var groupsIn: [PlatformGroup] = []
     @State private var groupsOwned: [PlatformGroup] = []
     @State private var busy = false
@@ -66,7 +69,8 @@ struct SharingView: View {
         .refreshable { await load() }
         .fullScreenCover(item: $opened) {
             PlatformVideoDetailView(video: $0, teacherName: openedFrom,
-                                    groupID: openedGroup?.id, groupName: openedGroup?.name)
+                                    groupID: openedGroup?.id, groupName: openedGroup?.name,
+                                    seriesName: openedSeries)
         }
     }
 
@@ -142,6 +146,71 @@ struct SharingView: View {
                 }
             }
 
+            // Series offers: accepted once, for every video now and later.
+            if !seriesOffers.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Series offered to you")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .textCase(.uppercase)
+                    ForEach(seriesOffers) { s in
+                        HStack(spacing: 12) {
+                            Image(systemName: "folder.fill").foregroundStyle(.orange)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(s.name).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                                Text("from \(s.owner.name) · \(s.video_count) video\(s.video_count == 1 ? "" : "s"), and every one added later")
+                                    .font(.caption).foregroundStyle(.white.opacity(0.55))
+                            }
+                            Spacer()
+                            if let gid = s.series_grant_id {
+                                Button("Accept") { Task { await acceptSeries(gid) } }
+                                    .font(.caption.weight(.semibold)).buttonStyle(.borderedProminent).tint(.orange).disabled(busy)
+                                Button("Decline", role: .destructive) { Task { await declineSeries(gid) } }
+                                    .font(.caption.weight(.medium)).disabled(busy)
+                            }
+                        }
+                        .padding(12)
+                        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
+                    }
+                }
+            }
+            if !seriesIn.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Series shared with you")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .textCase(.uppercase)
+                    ForEach(seriesIn) { s in
+                        DisclosureGroup {
+                            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                                ForEach(s.videos) { v in
+                                    FeedCard(video: v, showByline: false) {
+                                        openedFrom = s.owner.name
+                                        openedGroup = s.group
+                                        openedSeries = s.name
+                                        opened = v.asPlatformVideo
+                                    }
+                                }
+                            }
+                            .padding(.top, 8)
+                            if let gid = s.series_grant_id {
+                                Button("Stop this series", role: .destructive) { Task { await declineSeries(gid) } }
+                                    .font(.caption.weight(.medium)).disabled(busy).padding(.top, 6)
+                            }
+                        } label: {
+                            HStack {
+                                Label(s.name, systemImage: "folder.fill").font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                                Spacer()
+                                Text("from \(s.owner.name) · \(s.video_count)").font(.caption).foregroundStyle(.white.opacity(0.55))
+                            }
+                        }
+                        .tint(.orange)
+                        .padding(12)
+                        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
+                    }
+                }
+            }
+
             // Offers first: a yes or a no is the thing waiting on you.
             if !offers.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
@@ -181,7 +250,7 @@ struct SharingView: View {
                 }
             }
 
-            if inbox.isEmpty && offers.isEmpty {
+            if inbox.isEmpty && offers.isEmpty && seriesIn.isEmpty && seriesOffers.isEmpty {
                 blank("tray", "Nothing shared with you",
                       "When someone offers you a clip, it appears here to accept or decline.")
             } else if !inbox.isEmpty {
@@ -248,10 +317,26 @@ struct SharingView: View {
         let mail = await inb
         inbox = mail?.from ?? []
         offers = mail?.offers ?? []
+        seriesIn = mail?.series ?? []
+        seriesOffers = mail?.series_offers ?? []
         // Someone shared something with you and you haven't picked a side yet:
         // open on that. It is the reason you came.
-        if !chosen, !(inbox.isEmpty && offers.isEmpty && groupsIn.isEmpty) { direction = .incoming }
+        if !chosen, !(inbox.isEmpty && offers.isEmpty && groupsIn.isEmpty && seriesIn.isEmpty && seriesOffers.isEmpty) { direction = .incoming }
         loading = false
+    }
+
+    private func acceptSeries(_ grantID: Int) async {
+        busy = true; error = nil
+        do { try await DanceSagePlatform.shared.acceptSeries(grantID: grantID); await load() }
+        catch { self.error = error.localizedDescription }
+        busy = false
+    }
+
+    private func declineSeries(_ grantID: Int) async {
+        busy = true; error = nil
+        do { try await DanceSagePlatform.shared.declineSeries(grantID: grantID); await load() }
+        catch { self.error = error.localizedDescription }
+        busy = false
     }
 
     private func accept(_ grantID: Int) async {
