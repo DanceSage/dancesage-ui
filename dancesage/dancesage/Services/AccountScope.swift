@@ -36,6 +36,10 @@ enum AccountScope {
             adopt(from: old.appendingPathComponent("accounts", isDirectory: true)
                             .appendingPathComponent(key, isDirectory: true), into: directory)
             adopt(from: old, into: directory)    // the pre-folder, per-phone library
+            // A library staged by hand: copied in, so the app owns the result.
+            adopt(from: fileManager.temporaryDirectory
+                    .appendingPathComponent("restore", isDirectory: true)
+                    .appendingPathComponent(key, isDirectory: true), into: directory)
         }
         return directory
     }
