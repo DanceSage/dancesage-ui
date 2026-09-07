@@ -205,9 +205,9 @@ struct PlatformVideoDetailView: View {
                 if let onVisibilityChange {
                     Menu {
                         Button("Public") { Task { await onVisibilityChange("public") } }
-                        Button("Shared") { Task { await onVisibilityChange("granted") } }
                         Button("Private") { Task { await onVisibilityChange("private") } }
-                        Button("Share this one…", systemImage: "person.badge.plus") {
+                        Divider()
+                        Button("Share…", systemImage: "person.badge.plus") {
                             player?.pause()
                             showShare = true
                         }
@@ -266,27 +266,9 @@ struct PlatformVideoDetailView: View {
             .background(.white.opacity(0.10), in: Capsule())
     }
 
-    private var label: String {
-        switch video.visibility {
-        case "public": return "Public"
-        case "granted": return "Shared"
-        default: return "Private"
-        }
-    }
-    private var icon: String {
-        switch video.visibility {
-        case "public": return "globe"
-        case "granted": return "person.2.fill"
-        default: return "lock.fill"
-        }
-    }
-    private var tint: Color {
-        switch video.visibility {
-        case "public": return .green
-        case "granted": return .orange
-        default: return .white.opacity(0.7)
-        }
-    }
+    private var label: String { video.visibility == "public" ? "Public" : "Private" }
+    private var icon: String { video.visibility == "public" ? "globe" : "lock.fill" }
+    private var tint: Color { video.visibility == "public" ? .green : .white.opacity(0.7) }
 
     private func clock(_ t: Double) -> String {
         String(format: "%d:%02d", Int(t) / 60, Int(t) % 60)

@@ -393,8 +393,8 @@ struct PlatformProfileView: View {
             HStack(spacing: 0) {
                 stat("\(p.videos.count)", "total")
                 stat("\(p.videos.filter { $0.visibility == "public" }.count)", "public")
-                stat("\(p.videos.filter { $0.visibility == "private" }.count)", "private")
-                stat("\(p.videos.filter { $0.visibility == "granted" }.count)", "shared")
+                stat("\(p.videos.filter { $0.visibility != "public" }.count)", "private")
+                stat("\(Set(grants.map(\.video_id)).count)", "shared")
             }
             .padding(.vertical, 12)
             .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
@@ -616,11 +616,9 @@ private struct VideoCard: View {
         HStack {
             Menu {
                 Button("Public") { Task { await onVisibility("public") } }
-                Button("Shared") { Task { await onVisibility("granted") } }
                 Button("Private") { Task { await onVisibility("private") } }
-                Button("Share this one…", systemImage: "person.badge.plus",
-                       action: onShare)
                 Divider()
+                Button("Share…", systemImage: "person.badge.plus", action: onShare)
                 Button("Delete post", role: .destructive, action: onDelete)
             } label: {
                 HStack(spacing: 4) {
@@ -640,27 +638,9 @@ private struct VideoCard: View {
         .padding(.bottom, 11)
     }
 
-    private var label: String {
-        switch video.visibility {
-        case "public":  return "Public"
-        case "granted": return "Shared"
-        default:        return "Private"
-        }
-    }
-    private var icon: String {
-        switch video.visibility {
-        case "public":  return "globe"
-        case "granted": return "person.2.fill"
-        default:        return "lock.fill"
-        }
-    }
-    private var tint: Color {
-        switch video.visibility {
-        case "public":  return .green
-        case "granted": return .orange
-        default:        return .white.opacity(0.7)
-        }
-    }
+    private var label: String { video.visibility == "public" ? "Public" : "Private" }
+    private var icon: String { video.visibility == "public" ? "globe" : "lock.fill" }
+    private var tint: Color { video.visibility == "public" ? .green : .white.opacity(0.7) }
 }
 
 // MARK: - The skeleton
