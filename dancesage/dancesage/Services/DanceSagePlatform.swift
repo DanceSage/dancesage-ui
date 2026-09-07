@@ -103,6 +103,8 @@ struct FeedVideo: Identifiable, Decodable {
     let video_key: String
     let note: String
     let by: By
+    /// Set on a clip someone shared with you: the grant behind it, so you can decline.
+    let grant_id: Int?
 
     var seconds: Int { fps > 0 ? frames / fps : 0 }
     var duration: String { String(format: "%d:%02d", seconds / 60, seconds % 60) }
@@ -123,6 +125,19 @@ struct SharedFrom: Identifiable, Decodable {
     let avatar: String
     let videos: [FeedVideo]
     var id: String { handle }
+}
+
+/// People you share with together.
+struct PlatformGroup: Identifiable, Decodable {
+    struct Member: Identifiable, Decodable {
+        let handle: String?
+        let display_name: String
+        let avatar: String
+        var id: String { handle ?? display_name }
+    }
+    let id: Int
+    let name: String
+    let members: [Member]
 }
 
 enum PlatformError: LocalizedError {
@@ -217,6 +232,42 @@ struct DanceSagePlatform {
         var body: [String: Any] = ["handle": handle]
         if let videoID { body["video_id"] = videoID }
         _ = try await send("v1/grants", body: body)
+    }
+
+    /// Give everyone in a group access to one video — one grant per member.
+    func grant(groupID: Int, videoID: Int) async throws {
+        _ = try await send("v1/grants", body: ["group_id": groupID, "video_id": videoID])
+    }
+
+    /// Turn down something shared with you.
+    func decline(grantID: Int) async throws {
+        var req = try request("v1/shared/\(grantID)")
+        req.httpMethod = "DELETE"
+        let (data, response) = try await session.data(for: req)
+        try check(response, data)
+    }
+
+    // MARK: - Groups
+
+    func groups() async throws -> [PlatformGroup] {
+        struct Wrapper: Decodable { let groups: [PlatformGroup] }
+        return try JSONDecoder().decode(Wrapper.self, from: try await get("v1/groups")).groups
+    }
+
+    func createGroup(name: String, handles: [String]) async throws -> PlatformGroup {
+        try JSONDecoder().decode(PlatformGroup.self,
+                                 from: try await send("v1/groups", body: ["name": name, "handles": handles]))
+    }
+
+    func addToGroup(groupID: Int, handle: String) async throws {
+        _ = try await send("v1/groups/\(groupID)/members", body: ["handle": handle])
+    }
+
+    func deleteGroup(id: Int) async throws {
+        var req = try request("v1/groups/\(id)")
+        req.httpMethod = "DELETE"
+        let (data, response) = try await session.data(for: req)
+        try check(response, data)
     }
 
     /// Revoking is a timestamp, not a deletion — the next request from them is refused.

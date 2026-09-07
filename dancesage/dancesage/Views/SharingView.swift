@@ -130,9 +130,18 @@ struct SharingView: View {
                                             GridItem(.flexible(), spacing: 12)],
                                   spacing: 12) {
                             ForEach(from.videos) { v in
-                                FeedCard(video: v, showByline: false) {
-                                    openedFrom = from.display_name.isEmpty ? "@\(from.handle)" : from.display_name
-                                    opened = v.asPlatformVideo
+                                VStack(spacing: 6) {
+                                    FeedCard(video: v, showByline: false) {
+                                        openedFrom = from.display_name.isEmpty ? "@\(from.handle)" : from.display_name
+                                        opened = v.asPlatformVideo
+                                    }
+                                    if let grantID = v.grant_id {
+                                        Button("Decline", role: .destructive) {
+                                            Task { await decline(grantID) }
+                                        }
+                                        .font(.caption.weight(.medium))
+                                        .disabled(busy)
+                                    }
                                 }
                             }
                         }
@@ -164,6 +173,16 @@ struct SharingView: View {
         // open on that. It is the reason you came.
         if !chosen, !inbox.isEmpty { direction = .incoming }
         loading = false
+    }
+
+    /// Ends a share from the receiving end; it leaves the sender's ledger too.
+    private func decline(_ grantID: Int) async {
+        busy = true; error = nil
+        do {
+            try await DanceSagePlatform.shared.decline(grantID: grantID)
+            await load()
+        } catch { self.error = error.localizedDescription }
+        busy = false
     }
 
     private func revoke(_ g: PlatformGrant) async {
