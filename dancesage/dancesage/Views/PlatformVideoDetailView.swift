@@ -205,10 +205,9 @@ struct PlatformVideoDetailView: View {
                     Text(clock(playhead))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.white.opacity(0.7))
+                    SpeedSlider(rate: $rate)
                 }
             }
-
-            SpeedSlider(rate: $rate)
 
             HStack(spacing: 8) {
                 tag(video.style)

@@ -302,14 +302,17 @@ struct LessonOverlayView: View {
                 .padding(.horizontal, 14) // line up with the slider's track, not its thumb
             }
 
-            Slider(
-                value: $playbackTime,
-                in: 0...duration,
-                onEditingChanged: { editing in
-                    if editing { isPlaying = false }
-                }
-            )
-            .tint(.orange)
+            HStack(spacing: 12) {
+                Slider(
+                    value: $playbackTime,
+                    in: 0...duration,
+                    onEditingChanged: { editing in
+                        if editing { isPlaying = false }
+                    }
+                )
+                .tint(.orange)
+                SpeedSlider(rate: $rate)
+            }
 
             HStack(spacing: 30) {
                 Button {
@@ -346,8 +349,6 @@ struct LessonOverlayView: View {
                 .accessibilityLabel("Next problem moment")
             }
             .foregroundColor(.white)
-
-            SpeedSlider(rate: $rate)
         }
     }
 

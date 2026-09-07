@@ -84,9 +84,10 @@ struct SpeedSlider: View {
     }
 
     var body: some View {
-        HStack(spacing: 10) {
-            Text("Speed").font(.caption).foregroundStyle(.white.opacity(0.6))
-            Slider(value: $rate, in: 0.25...2, step: 0.25).tint(.orange)
+        HStack(spacing: 6) {
+            Image(systemName: "gauge.with.needle").font(.caption).foregroundStyle(.white.opacity(0.6))
+            Slider(value: $rate, in: 0.25...2, step: 0.25).tint(.orange).frame(width: 84)
         }
+        .accessibilityLabel("Speed")
     }
 }

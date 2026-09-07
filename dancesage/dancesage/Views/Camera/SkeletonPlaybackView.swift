@@ -365,8 +365,8 @@ struct SkeletonPlaybackView: View {
                         Text(String(format: "%d:%02d", Int(currentTime) / 60, Int(currentTime) % 60))
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.white.opacity(0.7))
+                        SpeedSlider(rate: $rate)
                     }
-                    SpeedSlider(rate: $rate)
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical, 14)
