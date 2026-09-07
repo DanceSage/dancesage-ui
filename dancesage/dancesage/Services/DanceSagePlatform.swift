@@ -79,6 +79,8 @@ struct PlatformGrant: Identifiable, Decodable {
     let video_id: Int?
     /// What this grant covers — a title, or everything shared.
     let scope: String
+    /// False while it is still an offer they have not answered.
+    let accepted: Bool?
 }
 
 /// A video as the feed and search return it — the same fields as a profile video,
@@ -215,8 +217,24 @@ struct DanceSagePlatform {
 
     /// The inbound half of a grant — what other people let you see.
     func sharedWithMe() async throws -> [SharedFrom] {
-        struct Wrapper: Decodable { let from: [SharedFrom] }
-        return try JSONDecoder().decode(Wrapper.self, from: try await get("v1/shared")).from
+        try await inbox().from
+    }
+
+    struct Inbox: Decodable {
+        /// What you accepted.
+        let from: [SharedFrom]
+        /// What is waiting on your yes or no.
+        let offers: [SharedFrom]
+        var offerCount: Int { offers.reduce(0) { $0 + $1.videos.count } }
+        var sharedCount: Int { from.reduce(0) { $0 + $1.videos.count } }
+    }
+
+    func inbox() async throws -> Inbox {
+        try JSONDecoder().decode(Inbox.self, from: try await get("v1/shared"))
+    }
+
+    func accept(grantID: Int) async throws {
+        _ = try await send("v1/shared/\(grantID)/accept", body: [:])
     }
 
     // MARK: - Who can see your shared videos
@@ -239,7 +257,7 @@ struct DanceSagePlatform {
         _ = try await send("v1/grants", body: ["group_id": groupID, "video_id": videoID])
     }
 
-    /// Turn down something shared with you.
+    /// Turn down an offer, or stop a share you accepted.
     func decline(grantID: Int) async throws {
         var req = try request("v1/shared/\(grantID)")
         req.httpMethod = "DELETE"

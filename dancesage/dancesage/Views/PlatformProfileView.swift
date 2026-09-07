@@ -16,6 +16,7 @@ struct PlatformProfileView: View {
     @State private var showSharing = false
     /// Videos other people let you see — so the way in is visible, not a menu item.
     @State private var sharedWithMe: [SharedFrom] = []
+    @State private var offers: [SharedFrom] = []
     @State private var showDelete = false
     /// What is waiting on a yes. One alert per view is all SwiftUI reliably
     /// presents; two of them means one silently never fires.
@@ -87,7 +88,8 @@ struct PlatformProfileView: View {
                             showSharing = true
                         } label: {
                             let n = sharedWithMe.reduce(0) { $0 + $1.videos.count }
-                            Label(n > 0 ? "Sharing · \(n) shared with you" : "Sharing",
+                            let o = offers.reduce(0) { $0 + $1.videos.count }
+                            Label(o > 0 ? "Sharing · \(o) to accept" : (n > 0 ? "Sharing · \(n) shared with you" : "Sharing"),
                                   systemImage: "person.2.fill")
                         }
                         Divider()
@@ -245,7 +247,8 @@ struct PlatformProfileView: View {
                 // What others let you see, one tap from the top of your own page —
                 // not a segment inside a menu item.
                 let sharedCount = sharedWithMe.reduce(0) { $0 + $1.videos.count }
-                if sharedCount > 0 {
+                let offerCount = offers.reduce(0) { $0 + $1.videos.count }
+                if sharedCount + offerCount > 0 {
                     Button {
                         showSharing = true
                     } label: {
@@ -256,10 +259,13 @@ struct PlatformProfileView: View {
                                 .frame(width: 40, height: 40)
                                 .background(.orange.opacity(0.16), in: Circle())
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(sharedCount == 1 ? "1 video shared with you" : "\(sharedCount) videos shared with you")
+                                Text(offerCount > 0
+                                     ? (offerCount == 1 ? "1 clip offered to you" : "\(offerCount) clips offered to you")
+                                     : (sharedCount == 1 ? "1 video shared with you" : "\(sharedCount) videos shared with you"))
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.white)
-                                Text("from " + sharedWithMe.map { $0.display_name.isEmpty ? "@\($0.handle)" : $0.display_name }
+                                Text((offerCount > 0 ? "accept or decline · from " : "from ")
+                                     + (offerCount > 0 ? offers : sharedWithMe).map { $0.display_name.isEmpty ? "@\($0.handle)" : $0.display_name }
                                         .formatted(.list(type: .and)))
                                     .font(.caption)
                                     .foregroundStyle(.white.opacity(0.6))
@@ -487,7 +493,9 @@ struct PlatformProfileView: View {
         for attempt in 0..<2 {
             do {
                 profile = try await DanceSagePlatform.shared.me()
-                sharedWithMe = (try? await DanceSagePlatform.shared.sharedWithMe()) ?? []
+                let mail = try? await DanceSagePlatform.shared.inbox()
+                sharedWithMe = mail?.from ?? []
+                offers = mail?.offers ?? []
                 error = nil
                 loading = false
                 return

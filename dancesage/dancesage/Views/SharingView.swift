@@ -16,6 +16,7 @@ struct SharingView: View {
     @State private var chosen = false
     @State private var grants: [PlatformGrant] = []
     @State private var inbox: [SharedFrom] = []
+    @State private var offers: [SharedFrom] = []
     @State private var busy = false
     @State private var loading = true
     @State private var error: String?
@@ -87,12 +88,12 @@ struct SharingView: View {
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(.white)
                             // Says what they can actually see, not just that they can.
-                            Text(g.scope)
-                                .font(.caption).foregroundStyle(.white.opacity(0.5))
+                            Text(g.accepted == false ? "\(g.scope) · waiting for their yes" : g.scope)
+                                .font(.caption).foregroundStyle(g.accepted == false ? .orange : .white.opacity(0.5))
                                 .lineLimit(1)
                         }
                         Spacer()
-                        Button("Remove", role: .destructive) {
+                        Button(g.accepted == false ? "Withdraw" : "Revoke", role: .destructive) {
                             Task { await revoke(g) }
                         }
                         .font(.caption.weight(.medium))
@@ -109,10 +110,49 @@ struct SharingView: View {
 
     private var incoming: some View {
         VStack(alignment: .leading, spacing: 24) {
-            if inbox.isEmpty {
+            // Offers first: a yes or a no is the thing waiting on you.
+            if !offers.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Offers")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .textCase(.uppercase)
+                    ForEach(offers) { from in
+                        ForEach(from.videos) { v in
+                            HStack(spacing: 12) {
+                                AvatarDot(handle: from.handle, avatar: from.avatar,
+                                          name: from.display_name, size: 36)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(v.title)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.white)
+                                        .lineLimit(1)
+                                    Text("from \(from.display_name.isEmpty ? "@\(from.handle)" : from.display_name)")
+                                        .font(.caption).foregroundStyle(.white.opacity(0.55))
+                                }
+                                Spacer()
+                                if let grantID = v.grant_id {
+                                    Button("Accept") { Task { await accept(grantID) } }
+                                        .font(.caption.weight(.semibold))
+                                        .buttonStyle(.borderedProminent)
+                                        .tint(.orange)
+                                        .disabled(busy)
+                                    Button("Decline", role: .destructive) { Task { await decline(grantID) } }
+                                        .font(.caption.weight(.medium))
+                                        .disabled(busy)
+                                }
+                            }
+                            .padding(12)
+                            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
+                        }
+                    }
+                }
+            }
+
+            if inbox.isEmpty && offers.isEmpty {
                 blank("tray", "Nothing shared with you",
-                      "When someone gives you access, their moves appear here.")
-            } else {
+                      "When someone offers you a clip, it appears here to accept or decline.")
+            } else if !inbox.isEmpty {
                 ForEach(inbox) { from in
                     VStack(alignment: .leading, spacing: 11) {
                         HStack(spacing: 9) {
@@ -136,7 +176,7 @@ struct SharingView: View {
                                         opened = v.asPlatformVideo
                                     }
                                     if let grantID = v.grant_id {
-                                        Button("Decline", role: .destructive) {
+                                        Button("Stop", role: .destructive) {
                                             Task { await decline(grantID) }
                                         }
                                         .font(.caption.weight(.medium))
@@ -166,16 +206,27 @@ struct SharingView: View {
 
     private func load() async {
         async let out = try? DanceSagePlatform.shared.grants()
-        async let inb = try? DanceSagePlatform.shared.sharedWithMe()
+        async let inb = try? DanceSagePlatform.shared.inbox()
         grants = await out ?? []
-        inbox = await inb ?? []
+        let mail = await inb
+        inbox = mail?.from ?? []
+        offers = mail?.offers ?? []
         // Someone shared something with you and you haven't picked a side yet:
         // open on that. It is the reason you came.
-        if !chosen, !inbox.isEmpty { direction = .incoming }
+        if !chosen, !(inbox.isEmpty && offers.isEmpty) { direction = .incoming }
         loading = false
     }
 
-    /// Ends a share from the receiving end; it leaves the sender's ledger too.
+    private func accept(_ grantID: Int) async {
+        busy = true; error = nil
+        do {
+            try await DanceSagePlatform.shared.accept(grantID: grantID)
+            await load()
+        } catch { self.error = error.localizedDescription }
+        busy = false
+    }
+
+    /// Declines an offer or stops an accepted share; it leaves the sender's ledger too.
     private func decline(_ grantID: Int) async {
         busy = true; error = nil
         do {
