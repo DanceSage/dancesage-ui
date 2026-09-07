@@ -141,6 +141,8 @@ struct LessonDetailView: View {
             )
         }
         .fullScreenCover(isPresented: $showReference) {
+            // The lesson's video too, when this phone has it — a lesson made from
+            // a shared post brought it down; one that arrived as a file did not.
             SkeletonPlaybackView(
                 keypoints: lesson.recording.keypoints,
                 allowSave: false,
@@ -148,7 +150,8 @@ struct LessonDetailView: View {
                 bpm: lesson.recording.bpm ?? 0,
                 fps: lesson.recording.effectiveFPS,
                 frameTimes: lesson.recording.effectiveFrameTimes,
-                recordingMode: lesson.recording.mode ?? .styling
+                recordingMode: lesson.recording.mode ?? .styling,
+                videoURL: RecordingStore.shared.existingVideoURL(for: lesson.recording)
             )
         }
         .fullScreenCover(isPresented: $showGhostPractice) {
