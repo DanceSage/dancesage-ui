@@ -12,6 +12,12 @@ struct GroupWallView: View {
     @State private var pickingReply = false
     @State private var myPosts: [PlatformVideo] = []
     @State private var busy = false
+    @State private var expanded: Set<Int> = []
+
+    private func binding(for id: Int) -> Binding<Bool> {
+        Binding(get: { expanded.contains(id) || (id == wall?.lessons.first?.id && expanded.isEmpty) },
+                set: { open in if open { expanded.insert(id) } else { expanded.remove(id); if expanded.isEmpty { expanded.insert(-2) } } })
+    }
 
     private let background = Color(red: 81 / 255, green: 63 / 255, blue: 89 / 255)
 
@@ -23,20 +29,21 @@ struct GroupWallView: View {
                     if let error { Text(error).font(.footnote).foregroundStyle(.red) }
                     if let wall {
                         header(wall)
-                        section(wall.group.mine ? "What you shared with the group" : "Shared with the group",
-                                empty: wall.group.mine ? "Use Group share on one of your posts." : "Accept the offer on your profile to watch it.") {
-                            ForEach(wall.lessons) { l in
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Button { opened = l.video } label: { lessonCard(l) }.buttonStyle(.plain)
-                                    ForEach(l.replies) { r in
-                                        Button { opened = r.asPlatformVideo } label: {
-                                            Label("\(r.by.display_name) · \(r.title)", systemImage: "arrow.turn.down.right")
-                                                .font(.caption)
-                                                .foregroundStyle(.white.opacity(0.85))
-                                                .lineLimit(1)
-                                        }
+
+                        // The tree: each video folds open on the attempts under it.
+                        if wall.lessons.isEmpty {
+                            Text(wall.group.mine ? "Nothing shared with the group yet — use Group share on one of your posts."
+                                                 : "Nothing shared with the group yet.")
+                                .font(.subheadline).foregroundStyle(.white.opacity(0.6))
+                        }
+                        ForEach(wall.lessons) { l in
+                            DisclosureGroup(isExpanded: binding(for: l.id)) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Button { opened = l.video } label: {
+                                        Label("Watch the video", systemImage: "play.circle")
+                                            .font(.caption.weight(.semibold)).foregroundStyle(.orange)
                                     }
-                                    if wall.group.mine {
+                                    if wall.group.mine, !l.members.isEmpty {
                                         FlowLayout(spacing: 5) {
                                             ForEach(l.members.indices, id: \.self) { i in
                                                 let m = l.members[i]
@@ -48,28 +55,79 @@ struct GroupWallView: View {
                                             }
                                         }
                                     }
+                                    if l.replies.isEmpty {
+                                        Text(wall.group.mine ? "No attempts yet." : "You have not shared an attempt at this one yet.")
+                                            .font(.caption).foregroundStyle(.white.opacity(0.5))
+                                    }
+                                    ForEach(l.replies) { r in
+                                        Button { opened = r.asPlatformVideo } label: {
+                                            HStack(spacing: 8) {
+                                                Image(systemName: "arrow.turn.down.right").font(.caption2)
+                                                Text(r.by.display_name).font(.subheadline.weight(.semibold))
+                                                Text("· \(r.title)").font(.subheadline).lineLimit(1)
+                                                Spacer()
+                                                Image(systemName: "chevron.right").font(.caption2)
+                                            }
+                                            .foregroundStyle(.white.opacity(0.9))
+                                        }
+                                    }
+                                }
+                                .padding(.top, 6)
+                            } label: {
+                                HStack {
+                                    Text(l.title).font(.subheadline.weight(.semibold)).foregroundStyle(.white).lineLimit(1)
+                                    Spacer()
+                                    Text(wall.group.mine
+                                         ? "\(l.replies.count) attempt\(l.replies.count == 1 ? "" : "s") · \(l.members.filter(\.accepted).count)/\(l.members.count) accepted"
+                                         : "\(l.replies.count) of yours")
+                                        .font(.caption).foregroundStyle(.white.opacity(0.55))
                                 }
                             }
+                            .tint(.orange)
+                            .padding(12)
+                            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
                         }
-                        VStack(alignment: .leading, spacing: 10) {
-                            if !wall.group.mine {
-                                Button {
-                                    pickingReply = true
-                                } label: {
-                                    Label("Share one of your posts back", systemImage: "arrow.uturn.backward.circle.fill")
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 14).padding(.vertical, 10)
-                                        .background(Color.orange, in: Capsule())
-                                }
-                                .disabled(busy)
+
+                        if !wall.group.mine {
+                            Button {
+                                pickingReply = true
+                            } label: {
+                                Label("Share one of your posts back", systemImage: "arrow.uturn.backward.circle.fill")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 14).padding(.vertical, 10)
+                                    .background(Color.orange, in: Capsule())
                             }
-                            section(wall.group.mine ? "Shared back by members" : "What you shared back",
-                                    empty: "Nothing yet.") {
-                                ForEach(wall.replies) { v in
-                                    FeedCard(video: v, showByline: wall.group.mine) { opened = v.asPlatformVideo }
+                            .disabled(busy)
+                        }
+
+                        if !wall.replies.isEmpty {
+                            DisclosureGroup(isExpanded: binding(for: -1)) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    ForEach(wall.replies) { r in
+                                        Button { opened = r.asPlatformVideo } label: {
+                                            HStack(spacing: 8) {
+                                                Text(r.by.display_name).font(.subheadline.weight(.semibold))
+                                                Text("· \(r.title)").font(.subheadline).lineLimit(1)
+                                                Spacer()
+                                                Image(systemName: "chevron.right").font(.caption2)
+                                            }
+                                            .foregroundStyle(.white.opacity(0.9))
+                                        }
+                                    }
+                                }
+                                .padding(.top, 6)
+                            } label: {
+                                HStack {
+                                    Text(wall.group.mine ? "Other videos shared back" : "Other videos you shared back")
+                                        .font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                                    Spacer()
+                                    Text("\(wall.replies.count)").font(.caption).foregroundStyle(.white.opacity(0.55))
                                 }
                             }
+                            .tint(.orange)
+                            .padding(12)
+                            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
                         }
                     } else {
                         ProgressView().tint(.white).frame(maxWidth: .infinity).padding(.top, 40)
@@ -106,25 +164,6 @@ struct GroupWallView: View {
                  : "From \(w.group.owner.display_name)")
                 .font(.caption).foregroundStyle(.white.opacity(0.6))
         }
-    }
-
-    private func section<Content: View>(_ title: String, empty: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.system(size: 13, weight: .bold)).foregroundStyle(.white.opacity(0.6)).textCase(.uppercase)
-            let grid = LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) { content() }
-            grid
-            Text(empty).font(.caption).foregroundStyle(.white.opacity(0.45)).opacity(0) // keeps spacing when empty
-        }
-    }
-
-    private func lessonCard(_ l: GroupWall.Lesson) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SkeletonThumbnail(poseKey: l.pose_key).frame(height: 150).frame(maxWidth: .infinity).background(.black.opacity(0.28))
-            Text(l.title).font(.subheadline.weight(.semibold)).foregroundStyle(.white).lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading).padding(11)
-        }
-        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
-        .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
     private func load() async {
