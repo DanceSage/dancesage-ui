@@ -13,6 +13,7 @@ struct SharingView: View {
     }
 
     @State private var direction: Direction = .out
+    @State private var chosen = false
     @State private var grants: [PlatformGrant] = []
     @State private var inbox: [SharedFrom] = []
     @State private var busy = false
@@ -31,6 +32,7 @@ struct SharingView: View {
                 }
                 .pickerStyle(.segmented)
                 .colorScheme(.dark)
+                .onChange(of: direction) { _, _ in chosen = true }
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
 
@@ -156,6 +158,9 @@ struct SharingView: View {
         async let inb = try? DanceSagePlatform.shared.sharedWithMe()
         grants = await out ?? []
         inbox = await inb ?? []
+        // Someone shared something with you and you haven't picked a side yet:
+        // open on that. It is the reason you came.
+        if !chosen, !inbox.isEmpty { direction = .incoming }
         loading = false
     }
 

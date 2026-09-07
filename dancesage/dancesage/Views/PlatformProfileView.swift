@@ -14,6 +14,8 @@ struct PlatformProfileView: View {
     @State private var showSignIn = false
     @State private var opened: PlatformVideo?
     @State private var showSharing = false
+    /// Videos other people let you see — so the way in is visible, not a menu item.
+    @State private var sharedWithMe: [SharedFrom] = []
     @State private var showDelete = false
     /// What is waiting on a yes. One alert per view is all SwiftUI reliably
     /// presents; two of them means one silently never fires.
@@ -84,7 +86,9 @@ struct PlatformProfileView: View {
                         Button {
                             showSharing = true
                         } label: {
-                            Label("Sharing", systemImage: "person.2.fill")
+                            let n = sharedWithMe.reduce(0) { $0 + $1.videos.count }
+                            Label(n > 0 ? "Sharing · \(n) shared with you" : "Sharing",
+                                  systemImage: "person.2.fill")
                         }
                         Divider()
                         Button("Sign out") { auth.signOut() }
@@ -237,6 +241,41 @@ struct PlatformProfileView: View {
         ScrollView {
             VStack(spacing: 24) {
                 header(p)
+
+                // What others let you see, one tap from the top of your own page —
+                // not a segment inside a menu item.
+                let sharedCount = sharedWithMe.reduce(0) { $0 + $1.videos.count }
+                if sharedCount > 0 {
+                    Button {
+                        showSharing = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "tray.full.fill")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(.orange)
+                                .frame(width: 40, height: 40)
+                                .background(.orange.opacity(0.16), in: Circle())
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(sharedCount == 1 ? "1 video shared with you" : "\(sharedCount) videos shared with you")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                Text("from " + sharedWithMe.map { $0.display_name.isEmpty ? "@\($0.handle)" : $0.display_name }
+                                        .formatted(.list(type: .and)))
+                                    .font(.caption)
+                                    .foregroundStyle(.white.opacity(0.6))
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.subheadline.bold())
+                                .foregroundStyle(.white.opacity(0.4))
+                        }
+                        .padding(14)
+                        .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 18))
+                        .overlay { RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.12)) }
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 // Errors used to be recorded and never shown, so a failed delete
                 // looked exactly like a button that does nothing.
@@ -448,6 +487,7 @@ struct PlatformProfileView: View {
         for attempt in 0..<2 {
             do {
                 profile = try await DanceSagePlatform.shared.me()
+                sharedWithMe = (try? await DanceSagePlatform.shared.sharedWithMe()) ?? []
                 error = nil
                 loading = false
                 return
