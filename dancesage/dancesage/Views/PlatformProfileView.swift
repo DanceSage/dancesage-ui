@@ -17,6 +17,8 @@ struct PlatformProfileView: View {
     /// Videos other people let you see — so the way in is visible, not a menu item.
     @State private var sharedWithMe: [SharedFrom] = []
     @State private var offers: [SharedFrom] = []
+    /// Who can see which of your posts — painted on every card.
+    @State private var grants: [PlatformGrant] = []
     @State private var showDelete = false
     /// What is waiting on a yes. One alert per view is all SwiftUI reliably
     /// presents; two of them means one silently never fires.
@@ -159,10 +161,18 @@ struct PlatformProfileView: View {
             }
         }
         .fullScreenCover(item: $opened) { video in
-            PlatformVideoDetailView(video: video) { visibility in
-                await change(video, to: visibility)
-                opened = nil
-            }
+            PlatformVideoDetailView(
+                video: video,
+                onVisibilityChange: { visibility in
+                    await change(video, to: visibility)
+                    opened = nil
+                },
+                onShared: { await load() },
+                onDelete: {
+                    opened = nil
+                    pending = .post(video)
+                }
+            )
         }
         .onChange(of: auth.isSignedIn) { _, signedIn in
             if signedIn { Task { await load() } }
@@ -319,7 +329,7 @@ struct PlatformProfileView: View {
                             }
                         }
                         ForEach(p.videos) { video in
-                            VideoCard(video: video) { visibility in
+                            VideoCard(video: video, sharedWith: grants.filter { $0.video_id == video.id }) { visibility in
                                 await change(video, to: visibility)
                             } onOpen: {
                                 opened = video
@@ -379,11 +389,12 @@ struct PlatformProfileView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
+            // The same four numbers as the web: what you posted, and who can see it.
             HStack(spacing: 0) {
-                stat("\(recordings.count + p.videos.count)", "recordings")
-                stat("\(p.videos.count)", "posted")
-                stat(p.styles.isEmpty ? "—" : p.styles.split(separator: ",").count.description,
-                     "styles")
+                stat("\(p.videos.count)", "total")
+                stat("\(p.videos.filter { $0.visibility == "public" }.count)", "public")
+                stat("\(p.videos.filter { $0.visibility == "private" }.count)", "private")
+                stat("\(p.videos.filter { $0.visibility == "granted" }.count)", "shared")
             }
             .padding(.vertical, 12)
             .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
@@ -496,6 +507,7 @@ struct PlatformProfileView: View {
                 let mail = try? await DanceSagePlatform.shared.inbox()
                 sharedWithMe = mail?.from ?? []
                 offers = mail?.offers ?? []
+                grants = (try? await DanceSagePlatform.shared.grants()) ?? []
                 error = nil
                 loading = false
                 return
@@ -547,6 +559,8 @@ struct PlatformProfileView: View {
 
 private struct VideoCard: View {
     let video: PlatformVideo
+    /// Everyone this post was shared with; a chip each, dimmed until they accept.
+    var sharedWith: [PlatformGrant] = []
     let onVisibility: (String) async -> Void
     let onOpen: () -> Void
     let onDelete: () -> Void
@@ -586,6 +600,12 @@ private struct VideoCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 11)
                     .padding(.top, 11)
+
+                if !sharedWith.isEmpty {
+                    GrantChips(grants: sharedWith)
+                        .padding(.horizontal, 11)
+                        .padding(.top, 6)
+                }
             }
         }
         .buttonStyle(.plain)
@@ -661,5 +681,54 @@ private struct SkeletonThumbnail: View {
             }
         }
         .task(id: poseKey) { track = await SkeletonTrack.load(key: poseKey) }
+    }
+}
+
+
+/// `@andy`, `@leo · waiting` — who can see a post, at a glance.
+struct GrantChips: View {
+    let grants: [PlatformGrant]
+
+    var body: some View {
+        FlowLayout(spacing: 5) {
+            ForEach(grants) { g in
+                let waiting = g.accepted == false
+                Text(waiting ? "@\(g.handle) · waiting" : "@\(g.handle)")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(waiting ? .orange : .white.opacity(0.8))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(.white.opacity(waiting ? 0.06 : 0.1), in: Capsule())
+                    .lineLimit(1)
+            }
+        }
+    }
+}
+
+/// Wraps its children onto as many rows as they need.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > width { x = 0; y += rowHeight + spacing; rowHeight = 0 }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: width == .infinity ? x : width, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX { x = bounds.minX; y += rowHeight + spacing; rowHeight = 0 }
+            view.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }

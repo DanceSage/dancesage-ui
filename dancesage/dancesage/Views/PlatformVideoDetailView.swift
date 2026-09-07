@@ -8,7 +8,10 @@ import AVKit
 /// apart over a long clip, and a skeleton that lags the body is worse than none.
 struct PlatformVideoDetailView: View {
     let video: PlatformVideo
+    /// Present only for the owner — and with it, the whole menu the profile has.
     var onVisibilityChange: ((String) async -> Void)? = nil
+    var onShared: (() async -> Void)? = nil
+    var onDelete: (() -> Void)? = nil
     /// Who posted it, when opened from the inbox — becomes the lesson's teacher.
     var teacherName: String = ""
 
@@ -27,6 +30,8 @@ struct PlatformVideoDetailView: View {
     /// replay the student used, so the teacher sees what they saw.
     @State private var replay: (reference: DanceRecording, attempt: DanceRecording)?
     @State private var showReplay = false
+    @State private var sharedWith: [PlatformGrant] = []
+    @State private var showShare = false
     @State private var namingLesson = false
     @State private var newLessonName = ""
     @State private var importing = false
@@ -97,7 +102,7 @@ struct PlatformVideoDetailView: View {
                 }
             }
         }
-        .task { await load(); await loadReplay() }
+        .task { await load(); await loadGrants(); await loadReplay() }
         .onDisappear { teardown() }
     }
 
@@ -202,6 +207,17 @@ struct PlatformVideoDetailView: View {
                         Button("Public") { Task { await onVisibilityChange("public") } }
                         Button("Shared") { Task { await onVisibilityChange("granted") } }
                         Button("Private") { Task { await onVisibilityChange("private") } }
+                        Button("Share this one…", systemImage: "person.badge.plus") {
+                            player?.pause()
+                            showShare = true
+                        }
+                        if let onDelete {
+                            Divider()
+                            Button("Delete post", role: .destructive) {
+                                dismiss()
+                                onDelete()
+                            }
+                        }
                     } label: {
                         Label(label, systemImage: icon)
                             .font(.caption.weight(.medium))
@@ -213,6 +229,12 @@ struct PlatformVideoDetailView: View {
                 }
             }
 
+            // Who can see it, right here — the same chips the profile card shows.
+            if onVisibilityChange != nil, !sharedWith.isEmpty {
+                GrantChips(grants: sharedWith)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             if !video.note.isEmpty {
                 Text(video.note)
                     .font(.footnote)
@@ -222,6 +244,17 @@ struct PlatformVideoDetailView: View {
         }
         .padding(18)
         .background(.black)
+        .sheet(isPresented: $showShare) {
+            ShareVideoView(video: video) {
+                await loadGrants()
+                await onShared?()
+            }
+        }
+    }
+
+    private func loadGrants() async {
+        guard onVisibilityChange != nil else { return }
+        sharedWith = ((try? await DanceSagePlatform.shared.grants()) ?? []).filter { $0.video_id == video.id }
     }
 
     private func tag(_ text: String) -> some View {
