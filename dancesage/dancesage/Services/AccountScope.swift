@@ -8,49 +8,36 @@ import Foundation
 /// session, so signing in as someone else on the same iPhone shows their
 /// library, empty or not, and never yours.
 ///
-/// A library written before folders existed belongs to whoever was signed in
-/// when it was made — the phone's owner. It moves into the first account that
-/// opens the app after the change, once.
+/// The folder is one the app made itself. A library put back by a tool from
+/// outside the app arrives owned by someone else, and then nothing under it
+/// can be written or even re-permissioned; so anything found in the old
+/// places is copied in — reading is always allowed — and dropped where it can be.
 @MainActor
 enum AccountScope {
     private static let fileManager = FileManager.default
-    private static var migratedFor: String?
+    private static var adoptedFor: String?
 
-    /// `…/DanceSage/accounts/<uid>/`, created on demand.
+    /// `…/DanceSage Library/<account>/`, created on demand.
     static func directory() throws -> URL {
-        let root = try fileManager.url(
+        let support = try fileManager.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
             appropriateFor: nil,
             create: true
-        ).appendingPathComponent("DanceSage", isDirectory: true)
+        )
         let key = accountKey()
-        let directory = root
-            .appendingPathComponent("accounts", isDirectory: true)
+        let directory = support
+            .appendingPathComponent("DanceSage Library", isDirectory: true)
             .appendingPathComponent(key, isDirectory: true)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        if migratedFor != key {
-            migratedFor = key
-            adoptDeviceLibrary(at: root, into: directory)
-            ensureWritable(root.appendingPathComponent("accounts", isDirectory: true))
+        if adoptedFor != key {
+            adoptedFor = key
+            let old = support.appendingPathComponent("DanceSage", isDirectory: true)
+            adopt(from: old.appendingPathComponent("accounts", isDirectory: true)
+                            .appendingPathComponent(key, isDirectory: true), into: directory)
+            adopt(from: old, into: directory)    // the pre-folder, per-phone library
         }
         return directory
-    }
-
-    /// A library restored from outside the app can arrive read-only. If a
-    /// probe write fails, put the permissions back to the app's own.
-    private static func ensureWritable(_ directory: URL) {
-        let probe = directory.appendingPathComponent(".probe")
-        if (try? Data().write(to: probe)) != nil {
-            try? fileManager.removeItem(at: probe)
-            return
-        }
-        guard let walk = fileManager.enumerator(at: directory, includingPropertiesForKeys: [.isDirectoryKey]) else { return }
-        try? fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path)
-        for case let url as URL in walk {
-            let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-            try? fileManager.setAttributes([.posixPermissions: isDir ? 0o755 : 0o644], ofItemAtPath: url.path)
-        }
     }
 
     /// The platform's user id, read from the session token. The handle can
@@ -75,20 +62,18 @@ enum AccountScope {
         return "\(value)"
     }
 
-    /// The pre-folder library (`recordings.json`, `lessons.json`, `Videos/`,
-    /// `Attempts/`) sits directly under DanceSage/. Move it into this account,
-    /// leaving nothing behind for the next person to inherit.
-    private static func adoptDeviceLibrary(at root: URL, into directory: URL) {
+    /// Copies a library's four parts into this account, skipping what the
+    /// account already has, then drops the source if it can.
+    private static func adopt(from source: URL, into directory: URL) {
+        guard fileManager.fileExists(atPath: source.path) else { return }
         for name in ["recordings.json", "lessons.json", "Videos", "Attempts"] {
-            let old = root.appendingPathComponent(name)
+            let old = source.appendingPathComponent(name)
             let new = directory.appendingPathComponent(name)
             guard fileManager.fileExists(atPath: old.path) else { continue }
-            if fileManager.fileExists(atPath: new.path) {
-                // The account already has one; the old copy is a duplicate now.
-                try? fileManager.removeItem(at: old)
-            } else {
-                try? fileManager.moveItem(at: old, to: new)
+            if !fileManager.fileExists(atPath: new.path) {
+                try? fileManager.copyItem(at: old, to: new)
             }
+            try? fileManager.removeItem(at: old)
         }
     }
 }
