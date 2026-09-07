@@ -20,8 +20,11 @@ struct ComparisonResultsView: View {
     @State private var coachText: String?
     @State private var saved: LessonAttempt?
     @State private var saveError = ""
-    @State private var showPost = false
+    @State private var saving = false
     @State private var postedID: Int?
+    @State private var sendNow = true
+    @State private var sentTo: String?
+    @StateObject private var publisher = DanceSagePublisher()
     @Environment(\.dismiss) private var dismiss
 
     private func speakFeedback() {
@@ -90,35 +93,43 @@ struct ComparisonResultsView: View {
                     Text("Both skeletons on one screen. Scrub, slow it down, and jump to your worst moments.")
                 }
 
-                if lesson != nil, candidate != nil {
+                if let lesson, candidate != nil {
                     Section {
-                        Button {
-                            save()
-                        } label: {
-                            Label(saved == nil ? "Save This Attempt" : "Saved",
-                                  systemImage: saved == nil ? "square.and.arrow.down" : "checkmark.circle.fill")
-                                .font(.body.weight(.semibold))
+                        if saved == nil {
+                            Toggle(isOn: $sendNow) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Send to \(lesson.teacherName.isEmpty ? "the teacher" : lesson.teacherName) now")
+                                    Text("Off, it waits under My lessons — send it later from the lesson, or from the web.")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            Button {
+                                Task { await save(lesson: lesson) }
+                            } label: {
+                                HStack {
+                                    Label("Save attempt", systemImage: "square.and.arrow.down")
+                                        .font(.body.weight(.semibold))
+                                    if saving { Spacer(); ProgressView() }
+                                }
+                            }
+                            .disabled(saving)
+                        } else {
+                            Label(postedID == nil ? "Saved on this iPhone" : "Saved — here and under My lessons",
+                                  systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            if let sentTo {
+                                Label("Sent to \(sentTo)", systemImage: "paperplane.fill").foregroundStyle(.secondary)
+                            }
                         }
-                        .disabled(saved != nil)
-
-                        Button {
-                            CoachVoice.shared.stop()
-                            showPost = true
-                        } label: {
-                            Label(postedID == nil ? "Save to my lessons online" : "Saved online",
-                                  systemImage: postedID == nil ? "icloud.and.arrow.up" : "checkmark.circle.fill")
-                                .font(.body.weight(.semibold))
-                        }
-                        .disabled(saved == nil || postedID != nil)
+                    } header: {
+                        Text("Your attempt")
                     } footer: {
                         if !saveError.isEmpty {
                             Text(saveError).foregroundColor(.red)
                         } else if saved == nil {
-                            Text("Nothing is kept unless you save it. Save to replay it later from the lesson, and to post it.")
+                            Text("Nothing is kept unless you save. Saving keeps it here and under this lesson online — private, never on your profile.")
                         } else if postedID == nil {
-                            Text("Keeps both skeletons under My lessons, online and private — never on your profile. Send it to your teacher now, or later from here or from the web.")
-                        } else {
-                            Text("Under My lessons online. Send it to your teacher from the lesson, or from the web.")
+                            Text("It's on this iPhone; the upload didn't go through. Long-press it on the lesson screen to try again.")
                         }
                     }
                 }
@@ -197,27 +208,6 @@ struct ComparisonResultsView: View {
                     attemptVideoURL: attemptVideoURL
                 )
             }
-            .sheet(isPresented: $showPost) {
-                if let lesson, let saved {
-                    PostRecordingView(
-                        keypoints: PoseFeedback.replayTrack(reference: lesson.recording, attempt: saved.recording).keypoints,
-                        frameTimes: lesson.recording.effectiveFrameTimes,
-                        fps: lesson.recording.effectiveFPS,
-                        videoURL: RecordingStore.shared.existingVideoURL(for: saved.recording),
-                        suggestedTitle: "\(lesson.title) — my attempt",
-                        replyTo: lesson.sourceVideoID,
-                        replyGroup: lesson.sourceGroupID.map { ($0, lesson.sourceGroupName ?? "the group") },
-                        replyTeacher: lesson.teacherName.isEmpty ? nil : lesson.teacherName,
-                        replyMirrored: saved.mirrored,
-                        replyAttemptTimes: PoseFeedback.replayTrack(reference: lesson.recording, attempt: saved.recording).attemptTimes
-                    ) { id in
-                        postedID = id
-                        var posted = saved
-                        posted.postedVideoID = id
-                        try? LessonAttemptStore.shared.upsert(posted)
-                    }
-                }
-            }
         }
     }
 
@@ -228,8 +218,13 @@ struct ComparisonResultsView: View {
         return RecordingStore.shared.existingVideoURL(for: attempt)
     }
 
-    private func save() {
+    /// One save: on the phone (with the camera video), then under the lesson
+    /// online, then — if asked — to the teacher. Each step reports its own
+    /// failure; an earlier success is never undone by a later miss.
+    private func save(lesson: Lesson) async {
         guard let candidate, saved == nil else { return }
+        saving = true; saveError = ""
+        defer { saving = false }
         do {
             if let pendingVideoURL {
                 let home = RecordingStore.shared.videoURL(for: candidate.recording)
@@ -239,9 +234,39 @@ struct ComparisonResultsView: View {
             }
             try LessonAttemptStore.shared.add(candidate)
             saved = candidate
-            saveError = ""
         } catch {
             saveError = "Couldn't save: \(error.localizedDescription)"
+            return
         }
+
+        let track = PoseFeedback.replayTrack(reference: lesson.recording, attempt: candidate.recording)
+        await publisher.publish(title: "\(lesson.title) — my attempt",
+                                visibility: "private",
+                                keypoints: track.keypoints,
+                                frameTimes: lesson.recording.effectiveFrameTimes,
+                                fps: lesson.recording.effectiveFPS,
+                                videoURL: RecordingStore.shared.existingVideoURL(for: candidate.recording),
+                                replyTo: lesson.sourceVideoID,
+                                mirrored: candidate.mirrored,
+                                attemptTimes: track.attemptTimes)
+        if case .failed(let message) = publisher.stage {
+            saveError = "Saved here, but not online: \(message)"
+            return
+        }
+        guard let id = publisher.lastPublishedID else { return }
+        postedID = id
+        var online = candidate
+        online.postedVideoID = id
+        if sendNow {
+            do {
+                try await DanceSagePlatform.shared.sendAttempt(id: id)
+                online.sentToTeacher = true
+                sentTo = lesson.teacherName.isEmpty ? "the teacher" : lesson.teacherName
+            } catch {
+                saveError = "Saved, but could not send it: \(error.localizedDescription)"
+            }
+        }
+        try? LessonAttemptStore.shared.upsert(online)
+        saved = online
     }
 }
