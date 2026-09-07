@@ -328,7 +328,8 @@ struct PlatformProfileView: View {
                                 pending = .recording(recording)
                             }
                         }
-                        ForEach(p.videos) { video in
+                        // Newest first, whatever order the server sent — same as the web.
+                        ForEach(p.videos.sorted { $0.id > $1.id }) { video in
                             VideoCard(video: video, sharedWith: grants.filter { $0.video_id == video.id }) { visibility in
                                 await change(video, to: visibility)
                             } onOpen: {
