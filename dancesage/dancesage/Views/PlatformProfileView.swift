@@ -647,7 +647,7 @@ private struct VideoCard: View {
 // MARK: - The skeleton
 
 /// A card-sized loop of the track. Same renderer as the full player.
-private struct SkeletonThumbnail: View {
+struct SkeletonThumbnail: View {
     let poseKey: String
     @State private var track: SkeletonTrack?
 

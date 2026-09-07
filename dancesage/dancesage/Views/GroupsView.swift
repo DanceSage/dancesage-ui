@@ -48,7 +48,9 @@ struct GroupsView: View {
                         }
                     } header: {
                         HStack {
-                            Text(g.name)
+                            NavigationLink { GroupWallView(groupID: g.id) } label: {
+                                Label(g.name, systemImage: "arrow.right.circle").textCase(nil)
+                            }
                             Spacer()
                             Button("Delete", role: .destructive) { Task { await delete(g) } }
                                 .font(.caption)

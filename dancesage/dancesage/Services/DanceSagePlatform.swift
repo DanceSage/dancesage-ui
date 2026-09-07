@@ -140,6 +140,37 @@ struct PlatformGroup: Identifiable, Decodable {
     let id: Int
     let name: String
     let members: [Member]
+    /// Present on groups someone else owns and put you in.
+    let owner: Member?
+}
+
+/// A group's wall: what went through it, both ways.
+struct GroupWall: Decodable {
+    struct Lesson: Identifiable, Decodable {
+        struct Who: Decodable { let handle: String?; let accepted: Bool }
+        let id: Int
+        let title: String
+        let pose_key: String
+        let has_video: Bool
+        let frames: Int
+        let fps: Int
+        let members: [Who]
+        var video: PlatformVideo {
+            PlatformVideo(id: id, title: title, note: "", style: "", level: "", visibility: "private",
+                          frames: frames, has_video: has_video, pose_key: pose_key, pose2d_key: "",
+                          video_key: "", fps: fps)
+        }
+    }
+    struct Head: Decodable {
+        let id: Int
+        let name: String
+        let mine: Bool
+        let members: [PlatformGroup.Member]
+        let owner: PlatformGroup.Member
+    }
+    let group: Head
+    let lessons: [Lesson]
+    let replies: [FeedVideo]
 }
 
 enum PlatformError: LocalizedError {
@@ -267,9 +298,23 @@ struct DanceSagePlatform {
 
     // MARK: - Groups
 
+    struct Groups: Decodable { let groups: [PlatformGroup]; let member_of: [PlatformGroup] }
+
+    func allGroups() async throws -> Groups {
+        try JSONDecoder().decode(Groups.self, from: try await get("v1/groups"))
+    }
+
     func groups() async throws -> [PlatformGroup] {
-        struct Wrapper: Decodable { let groups: [PlatformGroup] }
-        return try JSONDecoder().decode(Wrapper.self, from: try await get("v1/groups")).groups
+        try await allGroups().groups
+    }
+
+    func wall(groupID: Int) async throws -> GroupWall {
+        try JSONDecoder().decode(GroupWall.self, from: try await get("v1/groups/\(groupID)/wall"))
+    }
+
+    /// A member shares one of their own posts back to the group's owner.
+    func shareBack(groupID: Int, videoID: Int) async throws {
+        _ = try await send("v1/groups/\(groupID)/share", body: ["video_id": videoID])
     }
 
     func createGroup(name: String, handles: [String]) async throws -> PlatformGroup {

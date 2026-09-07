@@ -17,6 +17,8 @@ struct SharingView: View {
     @State private var grants: [PlatformGrant] = []
     @State private var inbox: [SharedFrom] = []
     @State private var offers: [SharedFrom] = []
+    @State private var groupsIn: [PlatformGroup] = []
+    @State private var groupsOwned: [PlatformGroup] = []
     @State private var busy = false
     @State private var loading = true
     @State private var error: String?
@@ -110,6 +112,32 @@ struct SharingView: View {
 
     private var incoming: some View {
         VStack(alignment: .leading, spacing: 24) {
+            if !groupsIn.isEmpty || !groupsOwned.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Groups")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .textCase(.uppercase)
+                    ForEach(groupsOwned + groupsIn) { g in
+                        NavigationLink { GroupWallView(groupID: g.id) } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "person.3.fill").foregroundStyle(.orange)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(g.name).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                                    Text(g.owner.map { "from \($0.display_name)" } ?? "yours · \(g.members.count) members")
+                                        .font(.caption).foregroundStyle(.white.opacity(0.55))
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(.white.opacity(0.4))
+                            }
+                            .padding(12)
+                            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
             // Offers first: a yes or a no is the thing waiting on you.
             if !offers.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
@@ -207,13 +235,17 @@ struct SharingView: View {
     private func load() async {
         async let out = try? DanceSagePlatform.shared.grants()
         async let inb = try? DanceSagePlatform.shared.inbox()
+        async let gs = try? DanceSagePlatform.shared.allGroups()
+        let all = await gs
+        groupsOwned = all?.groups ?? []
+        groupsIn = all?.member_of ?? []
         grants = await out ?? []
         let mail = await inb
         inbox = mail?.from ?? []
         offers = mail?.offers ?? []
         // Someone shared something with you and you haven't picked a side yet:
         // open on that. It is the reason you came.
-        if !chosen, !(inbox.isEmpty && offers.isEmpty) { direction = .incoming }
+        if !chosen, !(inbox.isEmpty && offers.isEmpty && groupsIn.isEmpty) { direction = .incoming }
         loading = false
     }
 
