@@ -40,6 +40,11 @@ struct LessonOverlayView: View {
     @State private var showVideo = true
     @State private var referencePlayer: AVPlayer?
     @State private var attemptPlayer: AVPlayer?
+    /// Where each dancer is in their frame, over the whole recording — so the
+    /// side-by-side panels can close in on the bodies instead of showing two
+    /// small figures in a lot of black.
+    @State private var referenceFocus: CGRect?
+    @State private var attemptFocus: CGRect?
     @AppStorage("replayRate") private var rate: Double = 1
     @Environment(\.dismiss) private var dismiss
 
@@ -92,10 +97,12 @@ struct LessonOverlayView: View {
                 HStack(spacing: 10) {
                     layoutToggle("Overlaid", systemImage: "figure.2", isOn: !sideBySide) { sideBySide = false }
                     layoutToggle("Side by side", systemImage: "rectangle.split.2x1", isOn: sideBySide) { sideBySide = true }
-                    if sideBySide, hasAnyVideo {
-                        layoutToggle("Video", systemImage: showVideo ? "video.fill" : "video.slash", isOn: showVideo) {
+                    if sideBySide {
+                        layoutToggle("Video", systemImage: showVideo ? "video.fill" : "video.slash", isOn: showVideo && hasAnyVideo) {
                             showVideo.toggle()
                         }
+                        .disabled(!hasAnyVideo)
+                        .opacity(hasAnyVideo ? 1 : 0.4)
                     }
                 }
                 .padding(.horizontal, 10)
@@ -121,6 +128,8 @@ struct LessonOverlayView: View {
             lastTick = Date()
             referencePlayer = referenceVideoURL.map(makePlayer)
             attemptPlayer = attemptVideoURL.map(makePlayer)
+            referenceFocus = Self.focus(of: reference)
+            attemptFocus = Self.focus(of: attempt)
         }
         .onDisappear {
             referencePlayer?.pause()
@@ -172,32 +181,84 @@ struct LessonOverlayView: View {
         let studentOverVideo = showVideo && attemptPlayer != nil
         let studentPose = studentOverVideo ? rawAttPose : aligned
         let studentErrors = (studentOverVideo && mirrored) ? errors.map(PoseFeedback.swapSides) : errors
+        // Drawn in the teacher's frame when not over video, so framed like the teacher.
+        let studentFocus = studentOverVideo ? attemptFocus : referenceFocus
+        // One zoom for both, so the two bodies stay at one scale.
+        let zoom = min(Self.zoom(for: referenceFocus), Self.zoom(for: studentFocus))
 
         return GeometryReader { geo in
             let gap: CGFloat = 4
             let width = min((geo.size.width - gap) / 2, geo.size.height * 9 / 16)
             let height = width * 16 / 9
             HStack(spacing: gap) {
-                panel(pose: showTeacher ? refPose : nil, errors: nil, player: referencePlayer)
-                    .frame(width: width, height: height)
-                panel(pose: showStudent ? studentPose : nil, errors: studentErrors, player: attemptPlayer)
-                    .frame(width: width, height: height)
+                panel(pose: showTeacher ? refPose : nil, errors: nil, player: referencePlayer,
+                      focus: referenceFocus, zoom: zoom, size: CGSize(width: width, height: height))
+                panel(pose: showStudent ? studentPose : nil, errors: studentErrors, player: attemptPlayer,
+                      focus: studentFocus, zoom: zoom, size: CGSize(width: width, height: height))
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
     }
 
-    private func panel(pose: [CGPoint]?, errors: [Double]?, player: AVPlayer?) -> some View {
-        ZStack {
+    /// One dancer's frame: video underneath when there is one, skeleton on
+    /// top, the whole thing scaled and shifted so the body fills the panel.
+    private func panel(pose: [CGPoint]?, errors: [Double]?, player: AVPlayer?,
+                       focus: CGRect?, zoom: CGFloat, size: CGSize) -> some View {
+        let centre = focus.map { CGPoint(x: $0.midX, y: $0.midY) } ?? CGPoint(x: 0.5, y: 0.5)
+        return ZStack {
             Color.white.opacity(0.05)
-            if showVideo, let player {
-                VideoSurface(player: player)
+            ZStack {
+                if showVideo, let player {
+                    VideoSurface(player: player)
+                }
+                if let pose {
+                    SkeletonOverlay(keypoints: [pose], videoAspect: 9.0 / 16.0, errorLevels: errors)
+                }
             }
-            if let pose {
-                SkeletonOverlay(keypoints: [pose], videoAspect: 9.0 / 16.0, errorLevels: errors)
+            .frame(width: size.width, height: size.height)
+            .scaleEffect(zoom)
+            .offset(x: (0.5 - centre.x) * zoom * size.width,
+                    y: (0.5 - centre.y) * zoom * size.height)
+
+            if showVideo, player == nil {
+                VStack {
+                    Spacer()
+                    Text("no video")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.45))
+                        .padding(.bottom, 8)
+                }
             }
         }
+        .frame(width: size.width, height: size.height)
         .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    /// The box the dancer moves within, over the whole recording, with room
+    /// around it. Every third frame is plenty; a body doesn't leave the box
+    /// between two of them.
+    private static func focus(of recording: DanceRecording) -> CGRect? {
+        var minX = CGFloat.greatestFiniteMagnitude, minY = CGFloat.greatestFiniteMagnitude
+        var maxX = -CGFloat.greatestFiniteMagnitude, maxY = -CGFloat.greatestFiniteMagnitude
+        var seen = false
+        for (index, frame) in recording.keypoints.enumerated() where index % 3 == 0 {
+            for point in frame.first ?? [] where PoseFeedback.isValid(point) {
+                minX = min(minX, point.x); maxX = max(maxX, point.x)
+                minY = min(minY, point.y); maxY = max(maxY, point.y)
+                seen = true
+            }
+        }
+        guard seen, maxX > minX, maxY > minY else { return nil }
+        let padX = (maxX - minX) * 0.15, padY = (maxY - minY) * 0.12
+        return CGRect(x: max(0, minX - padX), y: max(0, minY - padY),
+                      width: min(1, maxX + padX) - max(0, minX - padX),
+                      height: min(1, maxY + padY) - max(0, minY - padY))
+    }
+
+    /// How far a frame can be enlarged before its dancer would be cut off.
+    private static func zoom(for focus: CGRect?) -> CGFloat {
+        guard let focus, focus.width > 0.05, focus.height > 0.05 else { return 1 }
+        return min(2.6, max(1, min(1 / focus.width, 1 / focus.height)))
     }
 
     // MARK: - Controls

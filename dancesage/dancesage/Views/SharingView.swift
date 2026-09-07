@@ -20,6 +20,7 @@ struct SharingView: View {
     @State private var loading = true
     @State private var error: String?
     @State private var opened: PlatformVideo?
+    @State private var openedFrom = ""
 
     private let background = Color(red: 81 / 255, green: 63 / 255, blue: 89 / 255)
 
@@ -59,7 +60,7 @@ struct SharingView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task { await load() }
         .refreshable { await load() }
-        .fullScreenCover(item: $opened) { PlatformVideoDetailView(video: $0) }
+        .fullScreenCover(item: $opened) { PlatformVideoDetailView(video: $0, teacherName: openedFrom) }
     }
 
     // MARK: - Outward
@@ -130,6 +131,7 @@ struct SharingView: View {
                                   spacing: 12) {
                             ForEach(from.videos) { v in
                                 FeedCard(video: v, showByline: false) {
+                                    openedFrom = from.display_name.isEmpty ? "@\(from.handle)" : from.display_name
                                     opened = v.asPlatformVideo
                                 }
                             }

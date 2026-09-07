@@ -9,6 +9,8 @@ import AVKit
 struct PlatformVideoDetailView: View {
     let video: PlatformVideo
     var onVisibilityChange: ((String) async -> Void)? = nil
+    /// Who posted it, when opened from the inbox — becomes the lesson's teacher.
+    var teacherName: String = ""
 
     @Environment(\.dismiss) private var dismiss
     @State private var track: SkeletonTrack?
@@ -25,6 +27,10 @@ struct PlatformVideoDetailView: View {
     /// replay the student used, so the teacher sees what they saw.
     @State private var replay: (reference: DanceRecording, attempt: DanceRecording)?
     @State private var showReplay = false
+    @State private var namingLesson = false
+    @State private var newLessonName = ""
+    @State private var importing = false
+    @State private var lessonMessage: String?
 
     private var hasVideo: Bool { video.has_video && player != nil }
 
@@ -54,7 +60,36 @@ struct PlatformVideoDetailView: View {
                             Label("Lesson Replay", systemImage: "figure.2")
                         }
                     }
+                } else if !video.pose2d_key.isEmpty {
+                    // A post you can see is a move you can practise: it comes down
+                    // with its video, so the replay shows the teacher, not a ghost.
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            newLessonName = video.title
+                            namingLesson = true
+                        } label: {
+                            if importing {
+                                ProgressView().tint(.white)
+                            } else {
+                                Label("Add to My Lessons", systemImage: "graduationcap")
+                            }
+                        }
+                        .disabled(importing)
+                    }
                 }
+            }
+            .alert("Name this lesson", isPresented: $namingLesson) {
+                TextField("Lesson name", text: $newLessonName)
+                Button("Save") { Task { await importAsLesson(named: newLessonName) } }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("The move and its video come to this iPhone, and it appears in Lessons.")
+            }
+            .alert(lessonMessage?.hasPrefix("Couldn't") == true ? "Could Not Add Lesson" : "Added to Lessons",
+                   isPresented: Binding(get: { lessonMessage != nil }, set: { if !$0 { lessonMessage = nil } })) {
+                Button("OK", role: .cancel) { lessonMessage = nil }
+            } message: {
+                Text(lessonMessage ?? "")
             }
             .fullScreenCover(isPresented: $showReplay) {
                 if let replay {
@@ -222,6 +257,65 @@ struct PlatformVideoDetailView: View {
 
     private func clock(_ t: Double) -> String {
         String(format: "%d:%02d", Int(t) / 60, Int(t) % 60)
+    }
+
+    // MARK: - Becoming a lesson
+
+    /// Pulls the post down as a lesson: the 2D track for the skeleton, the video
+    /// when there is one, and beats found in that video's audio so the
+    /// comparison can count.
+    private func importAsLesson(named name: String) async {
+        importing = true
+        defer { importing = false }
+        do {
+            let raw = try await DanceSagePlatform.shared.poseTrack(key: video.pose2d_key)
+            guard let dancer = raw.j.first, !dancer.isEmpty, raw.isTwoDimensional else {
+                lessonMessage = "Couldn't add: this post has no usable skeleton."
+                return
+            }
+            let keypoints: [[[CGPoint]]] = dancer.map { frame in
+                [frame.map { CGPoint(x: $0.count > 0 ? $0[0] : -1, y: $0.count > 1 ? $0[1] : -1) }]
+            }
+
+            var downloaded: URL?
+            var beats: [Double] = []
+            var bpm: Double = 0
+            if video.has_video {
+                let remote = try await DanceSagePlatform.shared.playbackURL(videoID: video.id)
+                let (temp, _) = try await URLSession.shared.download(from: remote)
+                let kept = FileManager.default.temporaryDirectory.appendingPathComponent("lesson-\(video.id).mov")
+                try? FileManager.default.removeItem(at: kept)
+                try FileManager.default.moveItem(at: temp, to: kept)
+                downloaded = kept
+                (beats, bpm) = await withCheckedContinuation { continuation in
+                    let detector = BeatDetector()
+                    detector.detectBeats(from: kept) { found, foundBPM in
+                        continuation.resume(returning: (found, foundBPM))
+                    }
+                }
+            }
+
+            let recording = DanceRecording(
+                name: video.title,
+                keypoints: keypoints,
+                mode: .styling,
+                fps: Double(max(raw.fps, 1)),
+                frameTimes: raw.t ?? [],
+                beats: beats,
+                bpm: bpm,
+                hasVideo: downloaded != nil
+            )
+            if let downloaded {
+                let home = RecordingStore.shared.videoURL(for: recording)
+                try FileManager.default.createDirectory(at: home.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? FileManager.default.removeItem(at: home)
+                try FileManager.default.moveItem(at: downloaded, to: home)
+            }
+            let lesson = try LessonStore.shared.addLesson(recording: recording, teacherName: teacherName, name: name)
+            lessonMessage = "“\(lesson.title)” is in your Lessons\(downloaded == nil ? "" : ", with the video"). Open Lessons to practise it."
+        } catch {
+            lessonMessage = "Couldn't add: \(error.localizedDescription)"
+        }
     }
 
     // MARK: - Wiring
