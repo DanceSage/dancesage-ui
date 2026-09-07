@@ -210,19 +210,6 @@ struct PlatformVideoDetailView: View {
 
             SpeedSlider(rate: $rate)
 
-            if let track, track.hasDepth {
-                HStack(spacing: 10) {
-                    Text("Turn").font(.caption).foregroundStyle(.white.opacity(0.6))
-                    Slider(value: $yaw, in: -Double.pi...Double.pi).tint(.orange)
-                    Button {
-                        withAnimation { yaw = 17 * .pi / 180 }
-                    } label: {
-                        Image(systemName: "arrow.counterclockwise")
-                            .font(.caption).foregroundStyle(.white.opacity(0.6))
-                    }
-                }
-            }
-
             HStack(spacing: 8) {
                 tag(video.style)
                 tag(video.level)
