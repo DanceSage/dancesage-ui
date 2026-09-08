@@ -160,6 +160,23 @@ struct PlatformGroup: Identifiable, Decodable {
 }
 
 /// A folder in My videos, shared as a standing offer.
+struct DancerPage: Decodable {
+    struct Folder: Identifiable, Decodable {
+        let id: Int
+        let name: String
+        let videos: [FeedVideo]
+    }
+    let handle: String
+    let display_name: String
+    let bio: String
+    let city: String
+    let styles: String
+    let levels: String
+    let avatar: String
+    let folders: [Folder]
+    let videos: [FeedVideo]
+}
+
 struct PlatformSeries: Identifiable, Decodable {
     struct Who: Identifiable, Decodable {
         let grant_id: Int
@@ -313,6 +330,11 @@ struct DanceSagePlatform {
         let series_offers: [PlatformSeries]
         var offerCount: Int { offers.reduce(0) { $0 + $1.videos.count } }
         var sharedCount: Int { from.reduce(0) { $0 + $1.videos.count } }
+    }
+
+    /// A dancer's public page: series as folders, then the loose posts.
+    func dancer(handle: String) async throws -> DancerPage {
+        try JSONDecoder().decode(DancerPage.self, from: try await get("v1/dancers/\(handle)"))
     }
 
     func inbox() async throws -> Inbox {
