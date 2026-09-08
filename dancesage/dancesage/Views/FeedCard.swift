@@ -41,16 +41,25 @@ struct FeedCard: View {
                     .padding(7)
             }
             .overlay(alignment: .topLeading) {
-                if video.visibility != "public" {
-                    Label(video.visibility == "granted" ? "Shared" : "Private",
-                          systemImage: video.visibility == "granted"
-                                       ? "person.2.fill" : "lock.fill")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6).padding(.vertical, 3)
-                        .background(.black.opacity(0.5), in: Capsule())
-                        .padding(7)
+                HStack(spacing: 4) {
+                    if video.visibility != "public" {
+                        Label(video.visibility == "granted" ? "Shared" : "Private",
+                              systemImage: video.visibility == "granted"
+                                           ? "person.2.fill" : "lock.fill")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6).padding(.vertical, 3)
+                            .background(.black.opacity(0.5), in: Capsule())
+                    }
+                    if video.has3D {
+                        Text("3D")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6).padding(.vertical, 3)
+                            .background(Color(red: 0.93, green: 0.28, blue: 0.78).opacity(0.85), in: Capsule())
+                    }
                 }
+                .padding(7)
             }
 
             VStack(alignment: .leading, spacing: 5) {

@@ -306,6 +306,13 @@ struct PlatformVideoDetailView: View {
                         } label: {
                             Label("Share Video", systemImage: "video")
                         }
+                        if bodyInfo?.track?.files?["turntable"] != nil {
+                            Button {
+                                exportTurntable()
+                            } label: {
+                                Label("3D Turn", systemImage: "rotate.3d")
+                            }
+                        }
                         if track != nil {
                             Menu {
                                 Button("Silent") { exportSkeleton(.skeletonOverVideo, audio: false) }
@@ -543,6 +550,23 @@ struct PlatformVideoDetailView: View {
                 exportError = "The video could not be fetched."; return
             }
             exportedVideo = ExportedVideo(url: url)
+        }
+    }
+
+    /// The refined body turning in place, rendered on the GPU when the body was made.
+    private func exportTurntable() {
+        guard !isExporting, let path = bodyInfo?.track?.files?["turntable"] else { return }
+        player?.pause()
+        isExporting = true; exportProgress = 0
+        Task {
+            defer { isExporting = false }
+            guard let data = try? await DanceSagePlatform.shared.fileData(path: path) else {
+                exportError = "The 3D turn could not be fetched."; return
+            }
+            let kept = FileManager.default.temporaryDirectory.appendingPathComponent("turn-\(video.id).mp4")
+            try? FileManager.default.removeItem(at: kept)
+            guard (try? data.write(to: kept)) != nil else { exportError = "The 3D turn could not be saved."; return }
+            exportedVideo = ExportedVideo(url: kept)
         }
     }
 

@@ -4,6 +4,9 @@ import CoreGraphics
 /// Talks to the Dance Sage platform. Everything here needs a session; the rest of
 /// the app does not.
 
+/// One refined body of a post, by tier: "refined" or "3d"; the status the platform reports.
+struct BodyTierSummary: Decodable { let status: String; let has_turntable: Bool? }
+
 struct PlatformVideo: Identifiable, Decodable {
     let id: Int
     let title: String
@@ -22,6 +25,11 @@ struct PlatformVideo: Identifiable, Decodable {
     var mirrored: Bool? = nil
     /// A still of the video with the skeleton on it, when the post has a video.
     var thumb: String? = nil
+    /// The refined bodies that exist for this post, by tier.
+    var body: [String: BodyTierSummary]? = nil
+
+    /// A finished 3D body: the post can be turned by hand.
+    var has3D: Bool { body?["3d"]?.status == "done" }
 
     var seconds: Int { fps > 0 ? frames / fps : 0 }
     var duration: String { String(format: "%d:%02d", seconds / 60, seconds % 60) }
@@ -129,6 +137,11 @@ struct FeedVideo: Identifiable, Decodable {
     let series: GroupRef?
     /// A still of the video with the skeleton on it, when the post has a video.
     let thumb: String?
+    /// The refined bodies that exist for this post, by tier.
+    let body: [String: BodyTierSummary]?
+
+    /// A finished 3D body: the post can be turned by hand.
+    var has3D: Bool { body?["3d"]?.status == "done" }
 
     struct GroupRef: Decodable { let id: Int; let name: String }
 
@@ -365,7 +378,7 @@ struct DanceSagePlatform {
     /// The refined bodies of a post: which tiers exist and how far they are, and
     /// the best one to show, with a signed link to the viewer page.
     struct BodyInfo: Decodable {
-        struct Tier: Decodable { let id: Int; let status: String; let has_mesh: Bool }
+        struct Tier: Decodable { let id: Int; let status: String; let has_mesh: Bool; let has_turntable: Bool? }
         struct Track: Decodable {
             let id: Int
             let tier: String
@@ -374,6 +387,8 @@ struct DanceSagePlatform {
             let dancers: Int
             let frames: Int
             let view_url: String?
+            /// The body's files by name (joints, meta, mesh, turntable), as platform paths.
+            let files: [String: String]?
         }
         let summary: [String: Tier]
         let track: Track?
@@ -638,6 +653,11 @@ struct DanceSagePlatform {
         let data = try await get(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
         Self.imageCache.setObject(data as NSData, forKey: key)
         return data
+    }
+
+    /// A file behind the session, uncached: a body's turntable video, say.
+    func fileData(path: String) async throws -> Data {
+        try await get(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
     }
 
     private func get(_ path: String) async throws -> Data {
