@@ -45,6 +45,12 @@ struct PlatformVideoDetailView: View {
     @State private var replayFailed = false
     @State private var sharedWith: [PlatformGrant] = []
     @State private var showShare = false
+    /// Exports for TikTok, Instagram and the rest: the clip, or the skeleton
+    /// rendered onto it — the same menu the on-phone player has.
+    @State private var exportedVideo: ExportedVideo?
+    @State private var isExporting = false
+    @State private var exportProgress: Double = 0
+    @State private var exportError = ""
     @State private var namingLesson = false
     @State private var newLessonName = ""
     @State private var importing = false
@@ -143,6 +149,16 @@ struct PlatformVideoDetailView: View {
                 Button("OK", role: .cancel) { lessonMessage = nil }
             } message: {
                 Text(lessonMessage ?? "")
+            }
+            .sheet(item: $exportedVideo) { export in
+                ActivityView(url: export.url)
+            }
+            .alert("Could Not Export", isPresented: Binding(
+                get: { !exportError.isEmpty }, set: { if !$0 { exportError = "" } }
+            )) {
+                Button("OK", role: .cancel) { exportError = "" }
+            } message: {
+                Text(exportError)
             }
             .fullScreenCover(isPresented: $showReplay) {
                 if let replay {
@@ -255,6 +271,37 @@ struct PlatformVideoDetailView: View {
                 tag(video.style)
                 tag(video.level)
                 Spacer()
+                if video.has_video {
+                    Menu {
+                        Button {
+                            exportOriginal()
+                        } label: {
+                            Label("Share Video", systemImage: "video")
+                        }
+                        if track != nil {
+                            Menu {
+                                Button("Silent") { exportSkeleton(.skeletonOverVideo, audio: false) }
+                                Button("With Original Audio") { exportSkeleton(.skeletonOverVideo, audio: true) }
+                            } label: {
+                                Label("Skeleton + Video", systemImage: "figure.dance")
+                            }
+                            Menu {
+                                Button("Silent") { exportSkeleton(.skeletonOnly, audio: false) }
+                                Button("With Original Audio") { exportSkeleton(.skeletonOnly, audio: true) }
+                            } label: {
+                                Label("Skeleton Only", systemImage: "figure.walk")
+                            }
+                        }
+                    } label: {
+                        Label(isExporting ? "Exporting \(Int(exportProgress * 100))%" : "Export", systemImage: "square.and.arrow.up")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(.orange.opacity(0.16), in: Capsule())
+                    }
+                    .disabled(isExporting)
+                }
                 // Someone else's public clip: pass it on. Their private clip shared
                 // with you: nothing — it is theirs to share, not yours.
                 if onVisibilityChange == nil, video.visibility == "public" {
@@ -442,6 +489,54 @@ struct PlatformVideoDetailView: View {
         // Videos first, then the replay: it makes its players when it appears.
         replayVideos = (await teacherURL, await studentURL)
         replay = pair
+    }
+
+    // MARK: - Export
+
+    /// The clip as posted, handed to the share sheet.
+    private func exportOriginal() {
+        guard !isExporting else { return }
+        player?.pause()
+        isExporting = true; exportProgress = 0
+        Task {
+            defer { isExporting = false }
+            guard let url = await downloadVideo(id: video.id, name: "export-\(video.id)") else {
+                exportError = "The video could not be fetched."; return
+            }
+            exportedVideo = ExportedVideo(url: url)
+        }
+    }
+
+    /// The skeleton rendered onto the clip, or alone, through the same
+    /// exporter the on-phone player uses.
+    private func exportSkeleton(_ content: VideoExporter.Content, audio: Bool) {
+        guard !isExporting else { return }
+        player?.pause()
+        isExporting = true; exportProgress = 0
+        Task {
+            defer { isExporting = false }
+            guard let url = await downloadVideo(id: video.id, name: "export-\(video.id)"),
+                  let raw = try? await DanceSagePlatform.shared.poseTrack(key: video.overlayKey),
+                  let dancer = raw.j.first, !dancer.isEmpty else {
+                exportError = "The video or its skeleton could not be fetched."; return
+            }
+            let keypoints: [[[CGPoint]]] = dancer.map { frame in
+                [frame.map { CGPoint(x: $0.count > 0 ? $0[0] : -1, y: $0.count > 1 ? $0[1] : -1) }]
+            }
+            let fps = Double(max(raw.fps, 1))
+            let times = (raw.t?.count == dancer.count) ? raw.t! : (0..<dancer.count).map { Double($0) / fps }
+            do {
+                let exported = try await VideoExporter.exportSkeletonVideo(
+                    videoURL: url, keypoints: keypoints, frameTimes: times,
+                    useVisionIndices: (dancer.first?.count ?? 33) == 17,
+                    name: video.title.isEmpty ? "DanceSage" : video.title,
+                    options: VideoExporter.Options(content: content, includeOriginalAudio: audio),
+                    progress: { exportProgress = $0 })
+                exportedVideo = ExportedVideo(url: exported)
+            } catch {
+                exportError = error.localizedDescription
+            }
+        }
     }
 
     /// A post's video to a temporary file, for the replay's players.
