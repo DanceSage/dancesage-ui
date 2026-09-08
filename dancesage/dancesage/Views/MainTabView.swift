@@ -63,6 +63,8 @@ struct MainTabView: View {
         let side: CGFloat = 26
         let format = UIGraphicsImageRendererFormat.default()
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format)
+        // The tab bar tints anything it thinks is a template, into a flat white
+        // disc; the image itself has to say it is a picture.
         return renderer.image { ctx in
             let rect = CGRect(x: 0, y: 0, width: side, height: side)
             let path = UIBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5))
@@ -75,7 +77,7 @@ struct MainTabView: View {
             UIColor.white.withAlphaComponent(0.35).setStroke()
             path.lineWidth = 1
             path.stroke()
-        }
+        }.withRenderingMode(.alwaysOriginal)
     }
 }
 
