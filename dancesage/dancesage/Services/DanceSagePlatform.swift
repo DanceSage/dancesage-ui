@@ -280,8 +280,24 @@ struct DanceSagePlatform {
         c.timeoutIntervalForRequest = 12
         c.timeoutIntervalForResource = 120      // uploads need longer
         c.waitsForConnectivity = false
-        return URLSession(configuration: c)
+        return URLSession(configuration: c, delegate: RedirectPolicy(), delegateQueue: nil)
     }()
+
+    /// The platform answers a still or a video with a redirect to R2. Our
+    /// session token must not follow it there: R2 refuses a request that
+    /// carries two authorisations, and the token is nobody else's business.
+    private final class RedirectPolicy: NSObject, URLSessionTaskDelegate {
+        func urlSession(_ session: URLSession, task: URLSessionTask,
+                        willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest,
+                        completionHandler: @escaping (URLRequest?) -> Void) {
+            var next = request
+            if next.url?.host != task.originalRequest?.url?.host {
+                next.setValue(nil, forHTTPHeaderField: "Authorization")
+            }
+            completionHandler(next)
+        }
+    }
 
     /// The same data the web owner page renders — one source, two surfaces.
     func me() async throws -> PlatformProfile {
