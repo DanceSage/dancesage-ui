@@ -687,7 +687,7 @@ private struct VideoCard: View {
     private var openArea: some View {
         Button(action: onOpen) {
             VStack(alignment: .leading, spacing: 0) {
-                PostStill(thumbURL: video.thumbURL(base: AppConfig.platformBaseURL), poseKey: video.pose_key)
+                PostStill(thumb: video.thumb, poseKey: video.pose_key)
                 .frame(height: 150)
                 .frame(maxWidth: .infinity)
                 .background(.black.opacity(0.28))
@@ -757,21 +757,24 @@ private struct VideoCard: View {
 /// The post's picture on a card: a still of the video with the skeleton on
 /// it when there is a video, the 3D skeleton otherwise.
 struct PostStill: View {
-    let thumbURL: URL?
+    /// The still's path on the platform, e.g. /thumb/19.jpg; nil for skeleton-only posts.
+    let thumb: String?
     let poseKey: String
+    @State private var image: UIImage?
 
     var body: some View {
-        if let thumbURL {
-            AsyncImage(url: thumbURL) { phase in
-                if case .success(let image) = phase {
-                    image.resizable().scaledToFill()
-                } else {
-                    SkeletonThumbnail(poseKey: poseKey)
-                }
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                SkeletonThumbnail(poseKey: poseKey)
             }
-            .clipped()
-        } else {
-            SkeletonThumbnail(poseKey: poseKey)
+        }
+        .clipped()
+        .task(id: thumb) {
+            guard let thumb, !thumb.isEmpty,
+                  let data = try? await DanceSagePlatform.shared.imageData(path: thumb) else { image = nil; return }
+            image = UIImage(data: data)
         }
     }
 }

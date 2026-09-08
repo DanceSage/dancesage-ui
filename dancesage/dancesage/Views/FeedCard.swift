@@ -8,6 +8,7 @@ struct FeedCard: View {
     let onOpen: () -> Void
 
     @State private var track: SkeletonTrack?
+    @State private var still: UIImage?
 
     @ViewBuilder
     private var skeleton: some View {
@@ -23,11 +24,8 @@ struct FeedCard: View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack {
                 Color.black.opacity(0.28)
-                if let url = video.thumbURL(base: AppConfig.platformBaseURL) {
-                    AsyncImage(url: url) { phase in
-                        if case .success(let image) = phase { image.resizable().scaledToFill() }
-                        else { skeleton }
-                    }
+                if let still {
+                    Image(uiImage: still).resizable().scaledToFill()
                 } else {
                     skeleton
                 }
@@ -86,7 +84,12 @@ struct FeedCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .contentShape(RoundedRectangle(cornerRadius: 18))
         .onTapGesture(perform: onOpen)
-        .task(id: video.pose_key) { track = await SkeletonTrack.load(key: video.pose_key) }
+        .task(id: video.pose_key) { track = await SkeletonTrack.load(key: video.pose_key) 
+            if let thumb = video.thumb, !thumb.isEmpty,
+               let data = try? await DanceSagePlatform.shared.imageData(path: thumb) {
+                still = UIImage(data: data)
+            }
+        }
     }
 }
 

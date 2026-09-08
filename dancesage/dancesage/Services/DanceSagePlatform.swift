@@ -587,6 +587,17 @@ struct DanceSagePlatform {
         try check(response, data)
     }
 
+    /// Bytes of an image the platform guards — a still, an avatar — fetched
+    /// with your session, which AsyncImage cannot do. Cached in memory.
+    private static let imageCache = NSCache<NSString, NSData>()
+    func imageData(path: String) async throws -> Data {
+        let key = path as NSString
+        if let hit = Self.imageCache.object(forKey: key) { return hit as Data }
+        let data = try await get(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+        Self.imageCache.setObject(data as NSData, forKey: key)
+        return data
+    }
+
     private func get(_ path: String) async throws -> Data {
         let (data, response) = try await session.data(for: try request(path))
         try check(response, data)
