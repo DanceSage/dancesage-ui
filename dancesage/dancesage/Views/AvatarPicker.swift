@@ -82,6 +82,7 @@ struct AvatarPicker: View {
         do {
             try await DanceSagePlatform.shared.uploadAvatar(jpeg: jpeg)
             preview = squared
+            NotificationCenter.default.post(name: .avatarChanged, object: nil)
             onUploaded()
         } catch {
             self.error = error.localizedDescription
