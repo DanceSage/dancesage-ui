@@ -225,7 +225,7 @@ struct PlatformVideoDetailView: View {
             .frame(width: geo.size.width, height: geo.size.height)
             .overlay(alignment: .top) {
                 // The switches live over the picture: the bottom is for transport.
-                HStack(spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
                     LayerToggles(showVideo: $showVideo, showSkeleton: $showSkeleton, hasVideo: hasVideo)
                     if bodyInfo?.track?.view_url != nil {
                         // The refined body, a real 3D figure you can turn: the same viewer as the web.
@@ -234,6 +234,7 @@ struct PlatformVideoDetailView: View {
                             showBody = true
                         }
                     }
+                    Spacer(minLength: 0)
                     if let track, track.dancers.count > 1 {
                         DancerToggles(
                             labels: replay != nil ? ["Teacher", "Student"]
@@ -243,6 +244,7 @@ struct PlatformVideoDetailView: View {
                         )
                     }
                 }
+                .padding(.horizontal, 10)
                 .padding(.top, 10)
             }
             // Drag to turn a 3D skeleton, exactly as dragging the web canvas does.
@@ -508,7 +510,9 @@ struct PlatformVideoDetailView: View {
     /// Only a two-person 2D track is a lesson attempt; anything else has no
     /// teacher to compare against.
     private func loadReplay() async {
-        guard !video.pose2d_key.isEmpty,
+        // The lessons replay (overlaid, side by side) is for attempts only. A couple
+        // dancing together is a normal post: one video, two skeletons, nothing else.
+        guard video.reply_to != nil, !video.pose2d_key.isEmpty,
               let raw = try? await DanceSagePlatform.shared.poseTrack(key: video.pose2d_key),
               raw.j.count == 2, raw.isTwoDimensional else { return }
         func recording(_ dancer: [[[Double]]], named name: String, times: [Double]?) -> DanceRecording {

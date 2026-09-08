@@ -32,15 +32,15 @@ struct LayerToggles: View {
     var hasVideo: Bool = true
 
     var body: some View {
-        HStack(spacing: 6) {
+        // Stacked, so the pills sit in one narrow column at the edge of the picture.
+        VStack(alignment: .leading, spacing: 4) {
             if hasVideo {
                 LayerPill(title: "Video", color: .white, isOn: showVideo) { showVideo.toggle() }
             }
             LayerPill(title: "Skeleton", color: Color(red: 0.20, green: 0.95, blue: 0.92), isOn: showSkeleton) { showSkeleton.toggle() }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(Color.black.opacity(0.6), in: Capsule())
+        .padding(6)
+        .background(Color.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
@@ -51,7 +51,7 @@ struct DancerToggles: View {
     @Binding var hidden: Set<Int>
 
     var body: some View {
-        HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             ForEach(labels.indices, id: \.self) { index in
                 let isOn = !hidden.contains(index)
                 LayerPill(title: labels[index], color: colors[index % max(colors.count, 1)], isOn: isOn) {
@@ -60,9 +60,8 @@ struct DancerToggles: View {
                 .accessibilityLabel("\(labels[index]) skeleton")
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(Color.black.opacity(0.6), in: Capsule())
+        .padding(6)
+        .background(Color.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
