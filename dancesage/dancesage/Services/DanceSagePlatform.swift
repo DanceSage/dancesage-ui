@@ -362,6 +362,32 @@ struct DanceSagePlatform {
         var sharedCount: Int { from.reduce(0) { $0 + $1.videos.count } }
     }
 
+    /// The refined bodies of a post: which tiers exist and how far they are, and
+    /// the best one to show, with a signed link to the viewer page.
+    struct BodyInfo: Decodable {
+        struct Tier: Decodable { let id: Int; let status: String; let has_mesh: Bool }
+        struct Track: Decodable {
+            let id: Int
+            let tier: String
+            let engine: String
+            let fps: Double
+            let dancers: Int
+            let frames: Int
+            let view_url: String?
+        }
+        let summary: [String: Tier]
+        let track: Track?
+    }
+
+    func body(videoID: Int) async throws -> BodyInfo {
+        try JSONDecoder().decode(BodyInfo.self, from: try await get("v1/videos/\(videoID)/body"))
+    }
+
+    /// Ask for a body: "refined" (both dancers, free) or "3d" (the paid plan).
+    func refine(videoID: Int, tier: String) async throws {
+        try await send("v1/videos/\(videoID)/refine", body: ["tier": tier])
+    }
+
     /// A dancer's public page: series as folders, then the loose posts.
     func dancer(handle: String) async throws -> DancerPage {
         try JSONDecoder().decode(DancerPage.self, from: try await get("v1/dancers/\(handle)"))

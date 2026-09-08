@@ -45,6 +45,10 @@ struct PlatformVideoDetailView: View {
     @State private var replayFailed = false
     @State private var sharedWith: [PlatformGrant] = []
     @State private var showShare = false
+    /// The refined bodies, when the platform has any; the 3D pill opens the best one.
+    @State private var bodyInfo: DanceSagePlatform.BodyInfo?
+    @State private var showBody = false
+    @State private var refineMessage: String?
     /// Exports for TikTok, Instagram and the rest: the clip, or the skeleton
     /// rendered onto it — the same menu the on-phone player has.
     @State private var exportedVideo: ExportedVideo?
@@ -160,6 +164,15 @@ struct PlatformVideoDetailView: View {
             } message: {
                 Text(exportError)
             }
+            .sheet(isPresented: $showBody) {
+                if let path = bodyInfo?.track?.view_url, let base = AppConfig.platformBaseURL,
+                   let url = URL(string: path.trimmingCharacters(in: CharacterSet(charactersIn: "/")), relativeTo: base)?.absoluteURL {
+                    BodyViewerSheet(url: url, title: video.title)
+                }
+            }
+            .alert("Refine", isPresented: Binding(get: { refineMessage != nil }, set: { if !$0 { refineMessage = nil } })) {
+                Button("OK", role: .cancel) { refineMessage = nil }
+            } message: { Text(refineMessage ?? "") }
             .fullScreenCover(isPresented: $showReplay) {
                 if let replay {
                     LessonOverlayView(reference: replay.reference, attempt: replay.attempt,
@@ -169,7 +182,7 @@ struct PlatformVideoDetailView: View {
                 }
             }
         }
-        .task { await load(); await loadGrants(); await loadReplay() }
+        .task { await load(); await loadGrants(); await loadReplay(); await loadBody() }
         .onReceive(timer) { now in
             // Skeleton-only posts run on this clock; with a video, AVPlayer
             // owns the time and reports it through the observer.
@@ -214,6 +227,13 @@ struct PlatformVideoDetailView: View {
                 // The switches live over the picture: the bottom is for transport.
                 HStack(spacing: 8) {
                     LayerToggles(showVideo: $showVideo, showSkeleton: $showSkeleton, hasVideo: hasVideo)
+                    if bodyInfo?.track?.view_url != nil {
+                        // The refined body, a real 3D figure you can turn: the same viewer as the web.
+                        LayerPill(title: "3D", color: Color(red: 0.93, green: 0.28, blue: 0.78), isOn: false) {
+                            player?.pause()
+                            showBody = true
+                        }
+                    }
                     if let track, track.dancers.count > 1 {
                         DancerToggles(
                             labels: replay != nil ? ["Teacher", "Student"]
@@ -270,6 +290,14 @@ struct PlatformVideoDetailView: View {
             HStack(spacing: 8) {
                 tag(video.style)
                 tag(video.level)
+                if let s = bodyInfo?.summary, let state = s["3d"]?.status ?? s["refined"]?.status {
+                    Text(state == "done" ? (s["3d"]?.status == "done" ? "3D" : "Refined")
+                         : state == "failed" ? "Refine failed" : "Refining…")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(state == "done" ? Color(red: 0.93, green: 0.28, blue: 0.78) : state == "failed" ? .red : .orange)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(.white.opacity(0.08), in: Capsule())
+                }
                 Spacer()
                 if video.has_video {
                     Menu {
@@ -321,6 +349,17 @@ struct PlatformVideoDetailView: View {
                     Menu {
                         Button("Public") { Task { await onVisibilityChange("public") } }
                         Button("Private") { Task { await onVisibilityChange("private") } }
+                        if video.has_video {
+                            Divider()
+                            // Refine: a body made after the fact on the platform's GPU.
+                            let refined = bodyInfo?.summary["refined"]?.status, three = bodyInfo?.summary["3d"]?.status
+                            Button(refined == nil || refined == "failed" ? "Refine both dancers" : "Refine · \(refined!)",
+                                   systemImage: "figure.socialdance") { Task { await refine("refined") } }
+                                .disabled(refined == "queued" || refined == "running" || refined == "done")
+                            Button(three == nil || three == "failed" ? "Make it 3D" : "3D · \(three!)",
+                                   systemImage: "cube") { Task { await refine("3d") } }
+                                .disabled(three == "queued" || three == "running" || three == "done")
+                        }
                         Divider()
                         Button("Share…", systemImage: "person.badge.plus") {
                             player?.pause()
@@ -536,6 +575,28 @@ struct PlatformVideoDetailView: View {
             } catch {
                 exportError = error.localizedDescription
             }
+        }
+    }
+
+    // MARK: - Refine
+
+    private func loadBody() async {
+        bodyInfo = try? await DanceSagePlatform.shared.body(videoID: video.id)
+        // While something is queued or running, look again every few seconds.
+        while let s = bodyInfo?.summary, s.values.contains(where: { $0.status == "queued" || $0.status == "running" }) {
+            try? await Task.sleep(for: .seconds(8))
+            bodyInfo = try? await DanceSagePlatform.shared.body(videoID: video.id)
+        }
+    }
+
+    private func refine(_ tier: String) async {
+        do {
+            try await DanceSagePlatform.shared.refine(videoID: video.id, tier: tier)
+            refineMessage = tier == "3d" ? "Queued. The 3D body takes a few minutes; the 3D pill appears when it is ready."
+                                         : "Queued. Both dancers as bodies in a few minutes."
+            await loadBody()
+        } catch {
+            refineMessage = error.localizedDescription
         }
     }
 
