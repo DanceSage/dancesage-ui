@@ -25,6 +25,8 @@ struct PlatformVideo: Identifiable, Decodable {
     var mirrored: Bool? = nil
     /// A still of the video with the skeleton on it, when the post has a video.
     var thumb: String? = nil
+    /// How many dancers the phone saw: one, or a couple.
+    var dancers: Int? = nil
     /// The refined bodies that exist for this post, by tier.
     var body: [String: BodyTierSummary]? = nil
 
@@ -158,7 +160,8 @@ struct FeedVideo: Identifiable, Decodable {
         PlatformVideo(id: id, title: title, note: note, style: style, level: level,
                       visibility: visibility, frames: frames, has_video: has_video,
                       pose_key: pose_key, pose2d_key: pose2d_key,
-                      video_key: video_key, fps: fps, reply_to: reply_to, mirrored: mirrored, thumb: thumb)
+                      video_key: video_key, fps: fps, reply_to: reply_to, mirrored: mirrored, thumb: thumb,
+                      dancers: dancers, body: body)
     }
 }
 
