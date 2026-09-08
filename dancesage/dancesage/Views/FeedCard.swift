@@ -9,18 +9,31 @@ struct FeedCard: View {
 
     @State private var track: SkeletonTrack?
 
+    @ViewBuilder
+    private var skeleton: some View {
+        if let track {
+            SkeletonTrackView(track: track, still: true, lineWidth: 2)
+        } else {
+            Image(systemName: "figure.dance")
+                .font(.system(size: 24)).foregroundStyle(.white.opacity(0.2))
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack {
                 Color.black.opacity(0.28)
-                if let track {
-                    SkeletonTrackView(track: track, still: true, lineWidth: 2)
+                if let url = video.thumbURL(base: AppConfig.platformBaseURL) {
+                    AsyncImage(url: url) { phase in
+                        if case .success(let image) = phase { image.resizable().scaledToFill() }
+                        else { skeleton }
+                    }
                 } else {
-                    Image(systemName: "figure.dance")
-                        .font(.system(size: 24)).foregroundStyle(.white.opacity(0.2))
+                    skeleton
                 }
             }
             .frame(height: 160)
+            .clipped()
             .overlay(alignment: .bottomTrailing) {
                 Text(video.duration)
                     .font(.caption2.monospacedDigit().weight(.semibold))

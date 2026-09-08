@@ -687,7 +687,7 @@ private struct VideoCard: View {
     private var openArea: some View {
         Button(action: onOpen) {
             VStack(alignment: .leading, spacing: 0) {
-                SkeletonThumbnail(poseKey: video.pose_key)
+                PostStill(thumbURL: video.thumbURL(base: AppConfig.platformBaseURL), poseKey: video.pose_key)
                 .frame(height: 150)
                 .frame(maxWidth: .infinity)
                 .background(.black.opacity(0.28))
@@ -753,6 +753,28 @@ private struct VideoCard: View {
 }
 
 // MARK: - The skeleton
+
+/// The post's picture on a card: a still of the video with the skeleton on
+/// it when there is a video, the 3D skeleton otherwise.
+struct PostStill: View {
+    let thumbURL: URL?
+    let poseKey: String
+
+    var body: some View {
+        if let thumbURL {
+            AsyncImage(url: thumbURL) { phase in
+                if case .success(let image) = phase {
+                    image.resizable().scaledToFill()
+                } else {
+                    SkeletonThumbnail(poseKey: poseKey)
+                }
+            }
+            .clipped()
+        } else {
+            SkeletonThumbnail(poseKey: poseKey)
+        }
+    }
+}
 
 /// A card-sized loop of the track. Same renderer as the full player.
 struct SkeletonThumbnail: View {

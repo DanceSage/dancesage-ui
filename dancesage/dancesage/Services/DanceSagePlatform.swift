@@ -20,9 +20,16 @@ struct PlatformVideo: Identifiable, Decodable {
     /// An attempt: the video it answers, and whether the student read mirrored.
     var reply_to: Int? = nil
     var mirrored: Bool? = nil
+    /// A still of the video with the skeleton on it, when the post has a video.
+    var thumb: String? = nil
 
     var seconds: Int { fps > 0 ? frames / fps : 0 }
     var duration: String { String(format: "%d:%02d", seconds / 60, seconds % 60) }
+
+    func thumbURL(base: URL?) -> URL? {
+        guard let thumb, !thumb.isEmpty, let base else { return nil }
+        return base.appendingPathComponent(thumb.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+    }
 
     /// The 2D track overlays the video; the 3D one is the standalone skeleton.
     var overlayKey: String { pose2d_key.isEmpty ? pose_key : pose2d_key }
@@ -120,8 +127,15 @@ struct FeedVideo: Identifiable, Decodable {
     let mirrored: Bool?
     /// The series it came through, when it did.
     let series: GroupRef?
+    /// A still of the video with the skeleton on it, when the post has a video.
+    let thumb: String?
 
     struct GroupRef: Decodable { let id: Int; let name: String }
+
+    func thumbURL(base: URL?) -> URL? {
+        guard let thumb, !thumb.isEmpty, let base else { return nil }
+        return base.appendingPathComponent(thumb.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+    }
 
     var seconds: Int { fps > 0 ? frames / fps : 0 }
     var duration: String { String(format: "%d:%02d", seconds / 60, seconds % 60) }
@@ -131,7 +145,7 @@ struct FeedVideo: Identifiable, Decodable {
         PlatformVideo(id: id, title: title, note: note, style: style, level: level,
                       visibility: visibility, frames: frames, has_video: has_video,
                       pose_key: pose_key, pose2d_key: pose2d_key,
-                      video_key: video_key, fps: fps, reply_to: reply_to, mirrored: mirrored)
+                      video_key: video_key, fps: fps, reply_to: reply_to, mirrored: mirrored, thumb: thumb)
     }
 }
 
