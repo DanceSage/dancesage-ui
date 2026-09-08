@@ -27,8 +27,12 @@ struct ChooseHandleView: View {
             VStack(spacing: 0) {
                 Spacer()
 
-                Text("Pick your handle")
+                // Optional, and first: a face makes a handle worth remembering.
+                AvatarPicker(currentURL: nil, initials: "?", size: 92)
+                    .padding(.bottom, 18)
+                Text("Add a photo, and pick your handle")
                     .font(.title2.bold()).foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
                 Text("This is how people find you and share moves with you.")
                     .font(.subheadline).foregroundStyle(.white.opacity(0.66))
                     .multilineTextAlignment(.center)

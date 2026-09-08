@@ -558,6 +558,21 @@ struct DanceSagePlatform {
         return req
     }
 
+    /// Your profile picture, a square JPEG. Replaces whatever was there.
+    func uploadAvatar(jpeg: Data) async throws {
+        var req = try request("v1/me/avatar")
+        req.httpMethod = "POST"
+        let boundary = "----dancesage-\(UUID().uuidString)"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"image\"; filename=\"avatar.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(jpeg)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        req.httpBody = body
+        let (data, response) = try await session.data(for: req)
+        try check(response, data)
+    }
+
     private func get(_ path: String) async throws -> Data {
         let (data, response) = try await session.data(for: try request(path))
         try check(response, data)

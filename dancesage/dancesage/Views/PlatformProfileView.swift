@@ -108,7 +108,15 @@ struct PlatformProfileView: View {
                             showDelete = true
                         }
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        // Your picture is the menu: the same small circle the web uses.
+                        if let p = profile {
+                            avatar(p)
+                                .frame(width: 30, height: 30)
+                                .clipShape(Circle())
+                                .overlay { Circle().stroke(.white.opacity(0.25)) }
+                        } else {
+                            Image(systemName: "person.crop.circle")
+                        }
                     }
                 }
             }
@@ -462,10 +470,11 @@ struct PlatformProfileView: View {
     private func header(_ p: PlatformProfile) -> some View {
         VStack(spacing: 14) {
             HStack(spacing: 18) {
-                avatar(p)
-                    .frame(width: 76, height: 76)
-                    .clipShape(Circle())
-                    .overlay { Circle().stroke(.white.opacity(0.16)) }
+                // Tap the picture to change it.
+                AvatarPicker(currentURL: p.avatarURL(base: AppConfig.platformBaseURL),
+                             initials: initials(p), size: 76) {
+                    Task { await load() }
+                }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(p.display_name.isEmpty ? "Dancer" : p.display_name)
