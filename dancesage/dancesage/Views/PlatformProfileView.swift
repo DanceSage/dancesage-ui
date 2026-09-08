@@ -17,6 +17,8 @@ struct PlatformProfileView: View {
     /// Videos other people let you see — so the way in is visible, not a menu item.
     @State private var sharedWithMe: [SharedFrom] = []
     @State private var offers: [SharedFrom] = []
+    /// Whole courses offered to you — as much a reason to open Sharing as one clip.
+    @State private var seriesOffers: [PlatformSeries] = []
     /// Who can see which of your posts — painted on every card.
     @State private var grants: [PlatformGrant] = []
     /// Your series: folders above the loose posts.
@@ -96,7 +98,7 @@ struct PlatformProfileView: View {
                             showSharing = true
                         } label: {
                             let n = sharedWithMe.reduce(0) { $0 + $1.videos.count }
-                            let o = offers.reduce(0) { $0 + $1.videos.count }
+                            let o = offers.reduce(0) { $0 + $1.videos.count } + seriesOffers.count
                             Label(o > 0 ? "Sharing · \(o) to accept" : (n > 0 ? "Sharing · \(n) shared with you" : "Sharing"),
                                   systemImage: "person.2.fill")
                         }
@@ -294,7 +296,7 @@ struct PlatformProfileView: View {
                 // What others let you see, one tap from the top of your own page —
                 // not a segment inside a menu item.
                 let sharedCount = sharedWithMe.reduce(0) { $0 + $1.videos.count }
-                let offerCount = offers.reduce(0) { $0 + $1.videos.count }
+                let offerCount = offers.reduce(0) { $0 + $1.videos.count } + seriesOffers.count
                 if sharedCount + offerCount > 0 {
                     Button {
                         showSharing = true
@@ -307,13 +309,17 @@ struct PlatformProfileView: View {
                                 .background(.orange.opacity(0.16), in: Circle())
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(offerCount > 0
-                                     ? (offerCount == 1 ? "1 clip offered to you" : "\(offerCount) clips offered to you")
+                                     ? (seriesOffers.isEmpty
+                                        ? (offerCount == 1 ? "1 clip offered to you" : "\(offerCount) clips offered to you")
+                                        : (seriesOffers.count == 1 ? "A series offered to you" : "\(seriesOffers.count) series offered to you"))
                                      : (sharedCount == 1 ? "1 video shared with you" : "\(sharedCount) videos shared with you"))
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.white)
                                 Text((offerCount > 0 ? "accept or decline · from " : "from ")
-                                     + (offerCount > 0 ? offers : sharedWithMe).map { $0.display_name.isEmpty ? "@\($0.handle)" : $0.display_name }
-                                        .formatted(.list(type: .and)))
+                                     + ((offerCount > 0 ? offers.map { $0.display_name.isEmpty ? "@\($0.handle)" : $0.display_name }
+                                                        + seriesOffers.map { $0.owner.display_name }
+                                                      : sharedWithMe.map { $0.display_name.isEmpty ? "@\($0.handle)" : $0.display_name })
+                                        .formatted(.list(type: .and))))
                                     .font(.caption)
                                     .foregroundStyle(.white.opacity(0.6))
                                     .lineLimit(1)
@@ -597,6 +603,7 @@ struct PlatformProfileView: View {
                 let mail = try? await DanceSagePlatform.shared.inbox()
                 sharedWithMe = mail?.from ?? []
                 offers = mail?.offers ?? []
+                seriesOffers = mail?.series_offers ?? []
                 grants = (try? await DanceSagePlatform.shared.grants()) ?? []
                 series = (try? await DanceSagePlatform.shared.series()) ?? []
                 error = nil
