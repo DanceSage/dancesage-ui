@@ -392,6 +392,10 @@ struct DanceSagePlatform {
             let view_url: String?
             /// The body's files by name (joints, meta, mesh, turntable), as platform paths.
             let files: [String: String]?
+            /// The same body as an app pose track: 33 points, metres, drawn natively.
+            let pose_key: String?
+            /// The same body as an app pose track: 33 points, metres, drawn natively.
+            let pose_key: String?
         }
         let summary: [String: Tier]
         let track: Track?
