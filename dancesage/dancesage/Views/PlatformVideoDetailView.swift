@@ -365,10 +365,12 @@ struct PlatformVideoDetailView: View {
                             Button(three == nil || three == "failed" ? "Make it 3D" : "3D · \(three!)",
                                    systemImage: "cube") { Task { await refine("3d") } }
                                 .disabled(three == "queued" || three == "running" || three == "done")
-                            // The light 3D skeleton: free, on a CPU, seconds.
-                            Button(refined == nil || refined == "failed" ? "3D Skeleton (free)" : "3D Skeleton · \(refined!)",
-                                   systemImage: "figure.walk") { Task { await refine("refined") } }
-                                .disabled(refined == "queued" || refined == "running" || refined == "done")
+                            if (video.dancers ?? 1) > 1 {
+                                // A couple only: the R&D engine that holds both dancers.
+                                Button(refined == nil || refined == "failed" ? "Refine both dancers" : "Refine · \(refined!)",
+                                       systemImage: "figure.socialdance") { Task { await refine("refined") } }
+                                    .disabled(refined == "queued" || refined == "running" || refined == "done")
+                            }
                         }
                         Divider()
                         Button("Share…", systemImage: "person.badge.plus") {
