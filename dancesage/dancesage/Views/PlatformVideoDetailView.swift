@@ -47,10 +47,6 @@ struct PlatformVideoDetailView: View {
     @State private var showShare = false
     /// The refined bodies, when the platform has any; the 3D pill opens the best one.
     @State private var bodyInfo: DanceSagePlatform.BodyInfo?
-    /// The refined body as a native skeleton track, and whether it is on the stage.
-    @State private var bodyTrack: SkeletonTrack?
-    @State private var showBodyTrack = false
-    @State private var loadedBodyKey = ""
     @State private var showBody = false
     @State private var refineMessage: String?
     /// Exports for TikTok, Instagram and the rest: the clip, or the skeleton
@@ -206,10 +202,7 @@ struct PlatformVideoDetailView: View {
     private var stage: some View {
         GeometryReader { geo in
             ZStack {
-                if showBodyTrack, let bodyTrack {
-                    // The refined 3D body, drawn by the phone itself: drag to turn it.
-                    SkeletonTrackView(track: bodyTrack, time: playhead, yaw: yaw, lineWidth: 4, hidden: hiddenDancers)
-                } else if hasVideo, let aspect = videoAspect {
+                if hasVideo, let aspect = videoAspect {
                     // Player and overlay share one aspect-fitted box, so a normalised
                     // 2D track lands on the body instead of on the letterboxing.
                     ZStack {
@@ -234,17 +227,8 @@ struct PlatformVideoDetailView: View {
                 // The switches live over the picture: the bottom is for transport.
                 HStack(alignment: .top, spacing: 8) {
                     LayerToggles(showVideo: $showVideo, showSkeleton: $showSkeleton, hasVideo: hasVideo)
-                    if bodyTrack != nil {
-                        // The refined body as the phone's own 3D skeleton; hold for the web viewer.
-                        LayerPill(title: "3D", color: Color(red: 0.93, green: 0.28, blue: 0.78), isOn: showBodyTrack) {
-                            showBodyTrack.toggle()
-                        }
-                        .contextMenu {
-                            if bodyInfo?.track?.view_url != nil {
-                                Button("Open the 3D viewer", systemImage: "cube") { player?.pause(); showBody = true }
-                            }
-                        }
-                    } else if bodyInfo?.track?.view_url != nil {
+                    if bodyInfo?.track?.view_url != nil {
+                        // The refined body, a real 3D figure you can turn: the same viewer as the web.
                         LayerPill(title: "3D", color: Color(red: 0.93, green: 0.28, blue: 0.78), isOn: false) {
                             player?.pause()
                             showBody = true
@@ -268,7 +252,7 @@ struct PlatformVideoDetailView: View {
             .gesture(
                 DragGesture(minimumDistance: 2)
                     .onChanged { g in
-                        guard (showBodyTrack && bodyTrack != nil) || (track?.hasDepth ?? false) else { return }
+                        guard let track, track.hasDepth else { return }
                         if g.translation.width == 0 { dragStart = yaw }
                         yaw = dragStart + Double(g.translation.width) * 0.01
                     }
@@ -627,20 +611,10 @@ struct PlatformVideoDetailView: View {
 
     private func loadBody() async {
         bodyInfo = try? await DanceSagePlatform.shared.body(videoID: video.id)
-        await loadBodyTrack()
         // While something is queued or running, look again every few seconds.
         while let s = bodyInfo?.summary, s.values.contains(where: { $0.status == "queued" || $0.status == "running" }) {
             try? await Task.sleep(for: .seconds(8))
             bodyInfo = try? await DanceSagePlatform.shared.body(videoID: video.id)
-            await loadBodyTrack()
-        }
-    }
-
-    /// The best body as the phone's own skeleton track, once per key.
-    private func loadBodyTrack() async {
-        guard let key = bodyInfo?.track?.pose_key, !key.isEmpty else { return }
-        if bodyTrack == nil || loadedBodyKey != key {
-            bodyTrack = await SkeletonTrack.load(key: key); loadedBodyKey = key
         }
     }
 
