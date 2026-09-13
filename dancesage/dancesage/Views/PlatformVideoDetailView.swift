@@ -443,12 +443,25 @@ struct PlatformVideoDetailView: View {
             }
             // The lesson exists online from this moment — My lessons on the web
             // shows it now, empty, and fills in as attempts are saved.
-            let onlineID = try? await DanceSagePlatform.shared.addLesson(videoID: video.id, name: name)
+            //
+            // The online half is allowed to fail: practice works with no signal at
+            // all, so the lesson is still saved here. What is not allowed is
+            // failing in silence — that is how a library grows a lesson the web
+            // can never show. The Lessons tab retries it later; this only has to
+            // say so.
+            var onlineID: Int?
+            var offline = false
+            do { onlineID = try await DanceSagePlatform.shared.addLesson(videoID: video.id, name: name) }
+            catch { offline = true }
+
             let lesson = try LessonStore.shared.addLesson(
                 recording: recording, teacherName: teacherName, name: name,
                 sourceVideoID: video.id, sourceGroupID: groupID, sourceGroupName: groupName,
                 sourceSeriesName: seriesName, onlineLessonID: onlineID)
-            lessonMessage = "“\(lesson.title)” is in your Lessons\(downloaded == nil ? "" : ", with the video"). Open Lessons to practise it."
+            lessonMessage = "“\(lesson.title)” is in your Lessons\(downloaded == nil ? "" : ", with the video"). "
+                + (offline
+                   ? "It is on this iPhone only for now — it will appear on the web once you are back online."
+                   : "Open Lessons to practise it.")
         } catch {
             lessonMessage = "Couldn't add: \(error.localizedDescription)"
         }

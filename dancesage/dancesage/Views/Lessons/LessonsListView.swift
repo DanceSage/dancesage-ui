@@ -51,8 +51,14 @@ struct LessonsListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .onAppear(perform: loadLessons)
-        .task { classes = (try? await DanceSagePlatform.shared.classes()) ?? [] }
-        .refreshable { classes = (try? await DanceSagePlatform.shared.classes()) ?? [] }
+        .task {
+            classes = (try? await DanceSagePlatform.shared.classes()) ?? []
+            await repairOnlineLessons()
+        }
+        .refreshable {
+            classes = (try? await DanceSagePlatform.shared.classes()) ?? []
+            await repairOnlineLessons()
+        }
         .fullScreenCover(item: $openedAttempt) {
             PlatformVideoDetailView(video: $0, teacherName: openedFrom)
         }
@@ -267,6 +273,31 @@ struct LessonsListView: View {
             lessons = []
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// A lesson that came from a post but has no online id never reached the
+    /// server — the add happened with no signal, or the share had not been
+    /// accepted yet. Until it does, the lesson works here and is invisible in My
+    /// lessons on the web, which reads as lessons going missing.
+    ///
+    /// Asking again is free and idempotent: the platform holds one lesson per
+    /// video and hands back the one that exists. Silence is the right answer to
+    /// failure here — the tab has already opened, and a lesson that practises
+    /// perfectly well is not worth an alert.
+    private func repairOnlineLessons() async {
+        guard AppConfig.platformEnabled else { return }
+        let orphans = lessons.filter { $0.onlineLessonID == nil && $0.sourceVideoID != nil }
+        guard !orphans.isEmpty else { return }
+
+        var repaired = false
+        for lesson in orphans {
+            guard let videoID = lesson.sourceVideoID,
+                  let onlineID = try? await DanceSagePlatform.shared.addLesson(
+                      videoID: videoID, name: lesson.title) else { continue }
+            try? LessonStore.shared.noteOnlineID(onlineID, for: lesson.id)
+            repaired = true
+        }
+        if repaired { loadLessons() }
     }
 
     private func delete(_ lesson: Lesson) {

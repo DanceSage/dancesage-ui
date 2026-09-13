@@ -19,7 +19,9 @@ struct Lesson: Codable, Identifiable {
     let recording: DanceRecording
     /// What the dancer called it when they made it. Optional so lessons saved
     /// before naming existed still decode — those fall back to the recording.
-    let name: String?
+    /// Settable because adding a post you already have renames the lesson you
+    /// have rather than making a second one.
+    var name: String?
     /// Where it came from, when it came from a post: the video, and the group
     /// it was shared through. An attempt posted from this lesson answers that
     /// video and can go straight back to that group.

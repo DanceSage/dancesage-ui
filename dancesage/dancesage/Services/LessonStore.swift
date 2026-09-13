@@ -32,20 +32,49 @@ final class LessonStore {
 
     /// Adds one of the dancer's own recordings straight into the lesson library —
     /// the one-phone path, no file sharing involved.
+    ///
+    /// A post that is already a lesson is renamed rather than added twice. The
+    /// platform has always held one lesson per video, so a second local copy is a
+    /// lesson the web can never show: the library reads as two, My lessons reads
+    /// as one, and the one without an online id is the one that quietly failed.
+    /// Re-importing a file already behaves this way; adding a post now matches it.
     @discardableResult
     func addLesson(recording: DanceRecording, teacherName: String, name: String? = nil,
                    sourceVideoID: Int? = nil, sourceGroupID: Int? = nil, sourceGroupName: String? = nil,
                    sourceSeriesName: String? = nil, onlineLessonID: Int? = nil) throws -> Lesson {
+        var lessons = try load()
+
+        if let sourceVideoID,
+           let at = lessons.firstIndex(where: { $0.sourceVideoID == sourceVideoID }) {
+            var existing = lessons[at]
+            if let name, !name.trimmingCharacters(in: .whitespaces).isEmpty { existing.name = name }
+            existing.onlineLessonID = onlineLessonID ?? existing.onlineLessonID
+            existing.sourceGroupID = sourceGroupID ?? existing.sourceGroupID
+            existing.sourceGroupName = sourceGroupName ?? existing.sourceGroupName
+            existing.sourceSeriesName = sourceSeriesName ?? existing.sourceSeriesName
+            lessons[at] = existing
+            try save(lessons)
+            return existing
+        }
+
         var lesson = Lesson(name: name, teacherName: teacherName, note: "", recording: recording)
         lesson.onlineLessonID = onlineLessonID
         lesson.sourceVideoID = sourceVideoID
         lesson.sourceGroupID = sourceGroupID
         lesson.sourceGroupName = sourceGroupName
         lesson.sourceSeriesName = sourceSeriesName
-        var lessons = try load()
         lessons.append(lesson)
         try save(lessons)
         return lesson
+    }
+
+    /// Records the online id of a lesson the server has since accepted, so the
+    /// repair runs once rather than on every visit to the tab.
+    func noteOnlineID(_ onlineID: Int, for lessonID: String) throws {
+        var lessons = try load()
+        guard let at = lessons.firstIndex(where: { $0.id == lessonID }) else { return }
+        lessons[at].onlineLessonID = onlineID
+        try save(lessons)
     }
 
     /// Reads a shared `.dancesage` file and adds it to the library.
