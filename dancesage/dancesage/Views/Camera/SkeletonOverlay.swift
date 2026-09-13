@@ -66,6 +66,36 @@ struct SkeletonOverlay: View {
         11, 12, 13, 14, 15, 16
     ]
     
+    // Points to render for the 70-point MHR skeleton the 3D fit produces. The
+    // other fifty are fingers and face: a lot of ink that says nothing about
+    // salsa. Indices are MHR70's own — nothing is converted to another layout,
+    // because the moment two layouts mix nobody can say what a score means.
+    private let pointsToShow70: Set<Int> = [
+        0, 69,                       // nose, neck
+        5, 6, 7, 8, 62, 41,          // shoulders, elbows, wrists (left 62, right 41)
+        9, 10, 11, 12, 13, 14,       // hips, knees, ankles
+        15, 17, 18, 20              // big toes and heels
+    ]
+
+    // 70-point MHR connections
+    private let connections70: [(Int, Int)] = [
+        (69, 0),                     // neck to nose
+        (69, 5), (69, 6),            // neck to shoulders
+        (5, 6),                      // shoulders
+        (5, 9), (6, 10),             // shoulder to hip
+        (9, 10),                     // hips
+        (5, 7), (7, 62),             // left arm
+        (6, 8), (8, 41),             // right arm
+        (9, 11), (11, 13),           // left leg
+        (10, 12), (12, 14),          // right leg
+        (13, 17), (13, 15), (17, 15),// left foot
+        (14, 20), (14, 18), (20, 18) // right foot
+    ]
+
+    /// Foot and hand tips, drawn thinner so the limbs read first.
+    private let detail33: Set<Int> = [17, 18, 19, 20, 21, 22, 29, 30, 31, 32]
+    private let detail70: Set<Int> = [15, 17, 18, 20]
+
     // 17-point Vision connections
     private let connections17: [(Int, Int)] = [
         (0, 1), (0, 2),
@@ -121,21 +151,29 @@ struct SkeletonOverlay: View {
             Canvas { context, size in
                 for (personIndex, personKeypoints) in keypoints.enumerated() where !hidden.contains(personIndex) {
                     // Support both 17-point (Vision/partner) and 33-point (MediaPipe/styling)
-                    guard personKeypoints.count == 17 || personKeypoints.count == 33 else { continue }
+                    guard [17, 33, 70].contains(personKeypoints.count) else { continue }
                     let palette = personPalettes[personIndex % personPalettes.count]
                     let personErrors = personIndex == 0 ? errorLevels : nil
                     
                     // Use correct point set based on landmark count
-                    let activePoints = personKeypoints.count == 33 ? pointsToShow : pointsToShow17
+                    let isMHR70 = personKeypoints.count == 70
+                    let activePoints: Set<Int>
+                    let activeConnections: [(Int, Int)]
+                    let detailJoints: Set<Int>
+                    switch personKeypoints.count {
+                    case 70: activePoints = pointsToShow70; activeConnections = connections70; detailJoints = detail70
+                    case 33: activePoints = pointsToShow;   activeConnections = connections;   detailJoints = detail33
+                    default: activePoints = pointsToShow17; activeConnections = connections17; detailJoints = []
+                    }
 
                     // Bones go down first so the luminous joints sit crisply on top.
-                    let activeConnections = personKeypoints.count == 33 ? connections : connections17
                     drawSkeleton(
                         context: context,
                         keypoints: personKeypoints,
                         size: size,
                         palette: palette,
                         connections: activeConnections,
+                        detailJoints: detailJoints,
                         errors: personErrors
                     )
 
@@ -148,8 +186,9 @@ struct SkeletonOverlay: View {
                         let scaled = scaledPoint(point, in: size)
                         
                         // Larger circles for key joints, smaller for hand/foot detail
-                        let radius: CGFloat = [11, 12, 23, 24].contains(index) ? 8 :
-                                              [13, 14, 25, 26].contains(index) ? 6.5 : 4.5
+                        let radius: CGFloat = isMHR70
+                            ? ([5, 6, 9, 10].contains(index) ? 8 : [7, 8, 11, 12].contains(index) ? 6.5 : 4.5)
+                            : ([11, 12, 23, 24].contains(index) ? 8 : [13, 14, 25, 26].contains(index) ? 6.5 : 4.5)
                         let jointRect = CGRect(
                             x: scaled.x - radius,
                             y: scaled.y - radius,
@@ -196,6 +235,7 @@ struct SkeletonOverlay: View {
         size: CGSize,
         palette: SkeletonPalette,
         connections: [(Int, Int)],
+        detailJoints: Set<Int> = [],
         errors: [Double]? = nil
     ) {
         for (startIdx, endIdx) in connections {
@@ -211,8 +251,7 @@ struct SkeletonOverlay: View {
             let endPoint = scaledPoint(endKp, in: size)
             
             // Thinner lines for hand and foot detail
-            let isDetail = [17, 18, 19, 20, 21, 22, 29, 30, 31, 32].contains(startIdx) ||
-                           [17, 18, 19, 20, 21, 22, 29, 30, 31, 32].contains(endIdx)
+            let isDetail = detailJoints.contains(startIdx) || detailJoints.contains(endIdx)
             let lineWidth: CGFloat = isDetail ? 2.5 : 4
             
             var path = Path()

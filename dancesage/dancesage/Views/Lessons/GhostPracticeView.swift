@@ -26,6 +26,17 @@ struct GhostPracticeView: View {
     @State private var resultBox: GhostResultBox?
     @State private var liveErrorLevels: [Double]?
 
+    /// The teacher's refined 3D skeleton, when this lesson has one. Its presence
+    /// is what turns this screen into a 3D lesson: the ghost stops being the
+    /// teacher's flat recording and becomes her skeleton, turned to the angle the
+    /// student picked.
+    @State private var teacher3D: Body3DTrack?
+    /// Radians about the vertical. 0 is the angle the teacher was filmed from.
+    @State private var yaw: Double = 0
+    @State private var yawWhenDragBegan: Double = 0
+
+    private var is3D: Bool { teacher3D != nil }
+
     @Environment(\.dismiss) private var dismiss
 
     private let timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
@@ -92,12 +103,14 @@ struct GhostPracticeView: View {
                     .disabled(isBusy)
 
                     HStack(spacing: 14) {
-                        Label("Teacher", systemImage: "circle.fill")
+                        Label(is3D ? "Teacher · 3D" : "Teacher", systemImage: "circle.fill")
                             .foregroundColor(Color(red: 0.20, green: 0.95, blue: 0.92))
-                        Label("Good", systemImage: "circle.fill")
-                            .foregroundColor(.green)
-                        Label("Fix", systemImage: "circle.fill")
-                            .foregroundColor(.red)
+                        if !is3D {
+                            Label("Good", systemImage: "circle.fill")
+                                .foregroundColor(.green)
+                            Label("Fix", systemImage: "circle.fill")
+                                .foregroundColor(.red)
+                        }
                     }
                     .font(.system(size: 13, weight: .semibold))
                     .padding(.horizontal, 12)
@@ -122,6 +135,24 @@ struct GhostPracticeView: View {
                         .transition(.scale)
                 }
 
+                if is3D {
+                    VStack(spacing: 10) {
+                        HStack(spacing: 8) {
+                            angleButton("Front", radians: 0)
+                            angleButton("Side", radians: .pi / 2)
+                            angleButton("Back", radians: .pi)
+                            angleButton("Other side", radians: -.pi / 2)
+                        }
+                        Text("Drag to turn the teacher. Your score arrives when the 3D fit does.")
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.75))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.black.opacity(0.5), in: Capsule())
+                    }
+                    .padding(.bottom, 14)
+                }
+
                 Spacer()
 
                 Button(action: startPractice) {
@@ -139,6 +170,19 @@ struct GhostPracticeView: View {
         .onAppear {
             poseDetector.setMode(numPoses: 1)
         }
+        .task {
+            teacher3D = await Body3DTrack.forLesson(lesson)
+        }
+        // Turn the teacher by dragging anywhere on the camera. Cheap: the pose is
+        // seventy points, and the framing for an angle is worked out once.
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    guard is3D else { return }
+                    yaw = yawWhenDragBegan + Double(value.translation.width) / 180 * .pi
+                }
+                .onEnded { _ in yawWhenDragBegan = yaw }
+        )
         .onReceive(timer) { _ in
             tick()
         }
@@ -172,6 +216,15 @@ struct GhostPracticeView: View {
     /// reaction-lag window so following a third of a second behind isn't
     /// punished, and temporally smoothed so colors don't flicker.
     private func updateLiveErrors() {
+        // In a 3D lesson the live layer is deliberately only a guide: the phone
+        // sees MediaPipe's 33 points and the verdict will come from the 70-joint
+        // fit minutes later. Colouring the student against a skeleton that is not
+        // the one grading her would be a promise we cannot keep, so the colours
+        // stay off and the screen says why.
+        guard !is3D else {
+            liveErrorLevels = nil
+            return
+        }
         guard let student = poseDetector.keypoints.first, student.count == 33 else {
             liveErrorLevels = nil
             return
@@ -226,6 +279,12 @@ struct GhostPracticeView: View {
     }
 
     private func ghostPose(at time: Double) -> [CGPoint]? {
+        // A 3D lesson draws the teacher turned to the student's chosen angle and
+        // flattened onto the camera. Seventy MHR joints, drawn as seventy — the
+        // layout is never converted on the way to the screen.
+        if let teacher3D {
+            return teacher3D.projected(at: ghostRunning ? time : 0, yaw: yaw)
+        }
         let recording = lesson.recording
         guard let firstPose = recording.keypoints.first?.first else { return nil }
         guard ghostRunning else { return firstPose }
@@ -325,6 +384,23 @@ struct GhostPracticeView: View {
         } catch {
             try? FileManager.default.removeItem(at: url)
             captureError = error.localizedDescription
+        }
+    }
+
+    /// One of the four angles worth a tap; anything between them is a drag away.
+    private func angleButton(_ title: String, radians: Double) -> some View {
+        let selected = abs(remainder(yaw - radians, 2 * .pi)) < 0.12
+        return Button {
+            withAnimation(.easeOut(duration: 0.25)) { yaw = radians }
+            yawWhenDragBegan = radians
+        } label: {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(selected ? .black : .white)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 7)
+                .background(selected ? Color(red: 0.20, green: 0.95, blue: 0.92) : Color.black.opacity(0.5),
+                            in: Capsule())
         }
     }
 

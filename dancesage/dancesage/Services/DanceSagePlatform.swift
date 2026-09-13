@@ -401,6 +401,23 @@ struct DanceSagePlatform {
         try JSONDecoder().decode(BodyInfo.self, from: try await get("v1/videos/\(videoID)/body"))
     }
 
+    /// One of a body's files by the platform path `BodyInfo` handed back — a full
+    /// path with its own signed query, so it is joined to the base rather than
+    /// appended as a path component, which would swallow the token.
+    func bodyFile(path: String) async throws -> Data {
+        guard let base = AppConfig.platformBaseURL else { throw PlatformError.notConfigured }
+        guard let url = URL(string: path, relativeTo: base) else {
+            throw PlatformError.server("That 3D body is not where it said it was.")
+        }
+        var req = URLRequest(url: url)
+        if let token = DanceSageAuth.shared.sessionToken {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await session.data(for: req)
+        try check(response, data)
+        return data
+    }
+
     /// Ask for the 3D skeleton. One tier: the phone does 2D for free, this is paid.
     func refine(videoID: Int, tier: String) async throws {
         try await send("v1/videos/\(videoID)/refine", body: ["tier": tier])
