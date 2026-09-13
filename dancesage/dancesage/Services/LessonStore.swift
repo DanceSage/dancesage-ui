@@ -102,6 +102,14 @@ final class LessonStore {
         return true
     }
 
+    /// Fills in a teacher's name on a lesson saved without one.
+    func noteTeacher(_ name: String, for lessonID: String) throws {
+        var lessons = try load()
+        guard let at = lessons.firstIndex(where: { $0.id == lessonID }) else { return }
+        lessons[at].teacherName = name
+        try save(lessons)
+    }
+
     /// Records the online id of a lesson the server has since accepted, so the
     /// repair runs once rather than on every visit to the tab.
     func noteOnlineID(_ onlineID: Int, for lessonID: String) throws {

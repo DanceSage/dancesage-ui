@@ -20,6 +20,10 @@ struct PlatformVideo: Identifiable, Decodable {
     /// An attempt: the video it answers, and whether the student read mirrored.
     var reply_to: Int? = nil
     var mirrored: Bool? = nil
+    /// Who danced it. The server sends this with every card; without it a screen
+    /// had to be told whose clip it was showing, and a caller that forgot left a
+    /// lesson with no teacher's name on it at all.
+    var by: FeedVideo.By? = nil
     /// A still of the video with the skeleton on it, when the post has a video.
     var thumb: String? = nil
 
@@ -386,9 +390,22 @@ struct DanceSagePlatform {
     struct OnlineLesson: Decodable {
         struct Attempt: Decodable { let id: Int; let sent: Bool }
         struct Lesson: Decodable { let id: Int }
+        struct Teacher: Decodable { let handle: String?; let display_name: String }
         let id: Int
         let lesson: Lesson
         let attempts: [Attempt]
+        var teacher: Teacher? = nil
+    }
+
+    /// Who taught each lesson, by the post it came from — what a local lesson
+    /// saved without a name can be repaired from.
+    func lessonTeachers() async throws -> [Int: String] {
+        struct Wrapper: Decodable { let lessons: [OnlineLesson] }
+        let all = try JSONDecoder().decode(Wrapper.self, from: try await get("v1/lessons")).lessons
+        return Dictionary(all.compactMap { row -> (Int, String)? in
+            guard let name = row.teacher?.display_name, !name.isEmpty else { return nil }
+            return (row.lesson.id, name)
+        }, uniquingKeysWith: { first, _ in first })
     }
 
     /// Add to Lessons, online: the lesson exists from here on. Same video twice is one lesson.

@@ -13,7 +13,9 @@ struct Lesson: Codable, Identifiable {
 
     let id: String
     let formatVersion: Int
-    let teacherName: String
+    /// Settable: a lesson added before the post's owner travelled with it
+    /// has no name, and the Lessons tab fills it in from the platform.
+    var teacherName: String
     let note: String
     let createdAt: Date
     let recording: DanceRecording

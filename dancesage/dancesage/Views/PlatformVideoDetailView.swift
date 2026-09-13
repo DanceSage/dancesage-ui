@@ -20,8 +20,16 @@ struct PlatformVideoDetailView: View {
     /// attempt: it belongs to whoever the header already says it came from, and
     /// the lesson it answers belongs to the person reading. Names beat roles, so
     /// both switches carry one, with the role as the fallback.
+    /// Whoever this clip belongs to: what the caller said, or failing that what
+    /// the post itself carries. A caller that says nothing is why two lessons
+    /// ended up labelled "Teacher".
+    private var ownerName: String {
+        let given = teacherName.trimmingCharacters(in: .whitespaces)
+        if !given.isEmpty { return given }
+        return video.by?.display_name ?? ""
+    }
     private var theirName: String {
-        teacherName.trimmingCharacters(in: .whitespaces).isEmpty ? "Student" : teacherName
+        ownerName.isEmpty ? "Student" : ownerName
     }
     private var myName: String {
         DanceSageAuth.shared.displayName ?? "Teacher"
@@ -468,7 +476,7 @@ struct PlatformVideoDetailView: View {
             catch { offline = true }
 
             let lesson = try LessonStore.shared.addLesson(
-                recording: recording, teacherName: teacherName, name: name,
+                recording: recording, teacherName: ownerName, name: name,
                 sourceVideoID: video.id, sourceGroupID: groupID, sourceGroupName: groupName,
                 sourceSeriesName: seriesName, onlineLessonID: onlineID)
             lessonMessage = "“\(lesson.title)” is in your Lessons\(downloaded == nil ? "" : ", with the video"). "

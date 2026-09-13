@@ -291,17 +291,31 @@ struct LessonsListView: View {
         // remove the very lesson that would otherwise be registered twice.
         if (try? LessonStore.shared.mergeDuplicatePosts()) == true { loadLessons() }
 
-        let orphans = lessons.filter { $0.onlineLessonID == nil && $0.sourceVideoID != nil }
-        guard !orphans.isEmpty else { return }
-
         var repaired = false
-        for lesson in orphans {
+
+        // A lesson from a post with no online id never reached the server.
+        for lesson in lessons where lesson.onlineLessonID == nil && lesson.sourceVideoID != nil {
             guard let videoID = lesson.sourceVideoID,
                   let onlineID = try? await DanceSagePlatform.shared.addLesson(
                       videoID: videoID, name: lesson.title) else { continue }
             try? LessonStore.shared.noteOnlineID(onlineID, for: lesson.id)
             repaired = true
         }
+
+        // A lesson with no teacher's name shows "Teacher" in the replay, which is
+        // what the name was meant to replace. The platform knows who taught every
+        // lesson, by the post it came from.
+        let nameless = lessons.filter {
+            $0.teacherName.trimmingCharacters(in: .whitespaces).isEmpty && $0.sourceVideoID != nil
+        }
+        if !nameless.isEmpty, let teachers = try? await DanceSagePlatform.shared.lessonTeachers() {
+            for lesson in nameless {
+                guard let videoID = lesson.sourceVideoID, let name = teachers[videoID] else { continue }
+                try? LessonStore.shared.noteTeacher(name, for: lesson.id)
+                repaired = true
+            }
+        }
+
         if repaired { loadLessons() }
     }
 
