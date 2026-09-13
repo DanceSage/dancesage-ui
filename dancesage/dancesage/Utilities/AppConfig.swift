@@ -1,10 +1,6 @@
 import Foundation
 
 enum AppConfig {
-    /// Event discovery needs the DanceSage API hosted and hardened. Hidden for the
-    /// initial App Store release; flip back on when the server ships.
-    static let discoveryEnabled = false
-
     /// Publishing to a profile. Off until the platform is deployed — with it off the
     /// app is exactly what it is today: everything on device, no account, no network.
     static let platformEnabled = true
