@@ -70,6 +70,30 @@ final class LessonAttemptStore {
         try? fileManager.removeItem(at: RecordingStore.shared.videoURL(for: attempt.recording))
     }
 
+    /// Moves every attempt from one lesson to another.
+    ///
+    /// The videos stay exactly where they are: they belong to the attempt, not to
+    /// the lesson it was filed under, so this removes the old lesson's index file
+    /// and nothing else. Going through `deleteAll` here would delete the very
+    /// videos being moved.
+    func move(fromLesson old: String, toLesson new: String) throws {
+        let moving = try attempts(forLesson: old)
+        if !moving.isEmpty {
+            var target = try attempts(forLesson: new)
+            let known = Set(target.map(\.id))
+            for var attempt in moving where !known.contains(attempt.id) {
+                attempt.lessonID = new
+                target.append(attempt)
+            }
+            target.sort { $0.createdAt > $1.createdAt }
+            try save(target, forLesson: new)
+        }
+        let url = try fileURL(forLesson: old)
+        if fileManager.fileExists(atPath: url.path) {
+            try fileManager.removeItem(at: url)
+        }
+    }
+
     private func save(_ attempts: [LessonAttempt], forLesson lessonID: String) throws {
         let url = try fileURL(forLesson: lessonID)
         try encoder().encode(attempts).write(to: url, options: .atomic)

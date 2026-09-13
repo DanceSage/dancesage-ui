@@ -23,12 +23,25 @@ struct LessonOverlayView: View {
     let attempt: DanceRecording
     /// From the comparison result: the attempt reads better left/right flipped.
     let mirrored: Bool
-    /// "You" for the student; a teacher watching a shared attempt sees "Student".
+    /// Who is who, by name. A dancer recognises "Abdu" and "Andy" faster than
+    /// "Teacher" and "You", and in a replay of two skeletons on one body that
+    /// half-second of recognition is the difference between reading it and
+    /// working it out. Both fall back to the role when a name is missing.
+    var referenceLabel: String = "Teacher"
     var attemptLabel: String = "You"
     /// Videos, when this phone has them. A lesson file never carries the
     /// teacher's; the student's is kept only when the attempt was saved.
     var referenceVideoURL: URL? = nil
     var attemptVideoURL: URL? = nil
+
+    private var refName: String {
+        let trimmed = referenceLabel.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? "Teacher" : trimmed
+    }
+    private var attName: String {
+        let trimmed = attemptLabel.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? "You" : trimmed
+    }
 
     @State private var playbackTime: Double = 0
     @State private var isPlaying = true
@@ -81,8 +94,8 @@ struct LessonOverlayView: View {
                 // Each skeleton is a switch: see the teacher alone, the student
                 // alone, or both. Colours match what SkeletonOverlay draws.
                 HStack(spacing: 10) {
-                    skeletonToggle("Teacher", color: teacherColor, isOn: $showTeacher)
-                    skeletonToggle(attemptLabel, color: .green, isOn: $showStudent)
+                    skeletonToggle(refName, color: teacherColor, isOn: $showTeacher)
+                    skeletonToggle(attName, color: .green, isOn: $showStudent)
                     Label("Fix", systemImage: "circle.fill")
                         .foregroundColor(.red)
                         .font(.system(size: 14, weight: .semibold))

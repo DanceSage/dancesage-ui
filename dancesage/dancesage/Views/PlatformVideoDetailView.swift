@@ -15,6 +15,17 @@ struct PlatformVideoDetailView: View {
     var onDelete: (() -> Void)? = nil
     /// Who posted it, when opened from the inbox — becomes the lesson's teacher.
     var teacherName: String = ""
+
+    /// A replay only exists for an attempt, and on this screen the clip is the
+    /// attempt: it belongs to whoever the header already says it came from, and
+    /// the lesson it answers belongs to the person reading. Names beat roles, so
+    /// both switches carry one, with the role as the fallback.
+    private var theirName: String {
+        teacherName.trimmingCharacters(in: .whitespaces).isEmpty ? "Student" : teacherName
+    }
+    private var myName: String {
+        DanceSageAuth.shared.displayName ?? "Teacher"
+    }
     /// The group it was shared through, when opened from one — a lesson made
     /// from it remembers, so attempts can go straight back there.
     var groupID: Int? = nil
@@ -75,7 +86,8 @@ struct PlatformVideoDetailView: View {
             Color.black.ignoresSafeArea()
             if let replay {
                 LessonOverlayView(reference: replay.reference, attempt: replay.attempt,
-                                  mirrored: video.mirrored ?? false, attemptLabel: "Student",
+                                  mirrored: video.mirrored ?? false,
+                                  referenceLabel: myName, attemptLabel: theirName,
                                   referenceVideoURL: replayVideos.reference,
                                   attemptVideoURL: replayVideos.attempt)
             } else {
@@ -163,7 +175,8 @@ struct PlatformVideoDetailView: View {
             .fullScreenCover(isPresented: $showReplay) {
                 if let replay {
                     LessonOverlayView(reference: replay.reference, attempt: replay.attempt,
-                                      mirrored: video.mirrored ?? false, attemptLabel: "Student",
+                                      mirrored: video.mirrored ?? false,
+                                  referenceLabel: myName, attemptLabel: theirName,
                                       referenceVideoURL: replayVideos.reference,
                                       attemptVideoURL: replayVideos.attempt)
                 }

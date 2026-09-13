@@ -16,7 +16,9 @@ struct LessonAttempt: Codable, Identifiable {
 
     let id: String
     let formatVersion: Int
-    let lessonID: String
+    /// Settable so attempts can be moved when two local lessons of the same
+    /// post are merged back into one.
+    var lessonID: String
     let createdAt: Date
     /// The student's skeleton. No video, no world keypoints — the replay only
     /// needs 2D joints, frame times, and beats.

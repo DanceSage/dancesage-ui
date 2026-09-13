@@ -204,6 +204,8 @@ struct ComparisonResultsView: View {
                     reference: reference,
                     attempt: attempt,
                     mirrored: result.mirrored,
+                    referenceLabel: lesson?.teacherName ?? "Teacher",
+                    attemptLabel: DanceSageAuth.shared.displayName ?? "You",
                     referenceVideoURL: referenceVideoURL,
                     attemptVideoURL: attemptVideoURL
                 )

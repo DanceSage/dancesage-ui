@@ -286,6 +286,11 @@ struct LessonsListView: View {
     /// perfectly well is not worth an alert.
     private func repairOnlineLessons() async {
         guard AppConfig.platformEnabled else { return }
+
+        // Two lessons of one post first, then the missing online ids: merging can
+        // remove the very lesson that would otherwise be registered twice.
+        if (try? LessonStore.shared.mergeDuplicatePosts()) == true { loadLessons() }
+
         let orphans = lessons.filter { $0.onlineLessonID == nil && $0.sourceVideoID != nil }
         guard !orphans.isEmpty else { return }
 

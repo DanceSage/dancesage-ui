@@ -68,6 +68,40 @@ final class LessonStore {
         return lesson
     }
 
+    /// Folds two or more lessons of the same post back into one.
+    ///
+    /// Earlier builds let the same post be added twice, so a library can hold two
+    /// lessons where the platform holds one — and My lessons on the web then shows
+    /// fewer lessons than the phone, which reads as lessons going missing.
+    ///
+    /// The copy the server knows about is the one kept, because its online id is
+    /// what attempts are sent through. The name comes from the oldest copy: that
+    /// is what the dancer called it, and any "-2" was only a way round the bug.
+    /// Attempts move across; their videos are untouched.
+    @discardableResult
+    func mergeDuplicatePosts() throws -> Bool {
+        var lessons = try load()
+        let groups = Dictionary(grouping: lessons.filter { $0.sourceVideoID != nil },
+                                by: { $0.sourceVideoID! }).filter { $0.value.count > 1 }
+        guard !groups.isEmpty else { return false }
+
+        for (_, group) in groups {
+            let byAge = group.sorted { $0.createdAt < $1.createdAt }
+            let keeper = group.first(where: { $0.onlineLessonID != nil }) ?? byAge[0]
+
+            for loser in group where loser.id != keeper.id {
+                try LessonAttemptStore.shared.move(fromLesson: loser.id, toLesson: keeper.id)
+                lessons.removeAll { $0.id == loser.id }
+            }
+            if let at = lessons.firstIndex(where: { $0.id == keeper.id }),
+               let original = byAge.compactMap(\.name).first {
+                lessons[at].name = original
+            }
+        }
+        try save(lessons)
+        return true
+    }
+
     /// Records the online id of a lesson the server has since accepted, so the
     /// repair runs once rather than on every visit to the tab.
     func noteOnlineID(_ onlineID: Int, for lessonID: String) throws {

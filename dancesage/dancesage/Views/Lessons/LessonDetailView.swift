@@ -155,6 +155,8 @@ struct LessonDetailView: View {
                 reference: lesson.recording,
                 attempt: attempt.recording,
                 mirrored: attempt.mirrored,
+                referenceLabel: lesson.teacherName,
+                attemptLabel: DanceSageAuth.shared.displayName ?? "You",
                 referenceVideoURL: RecordingStore.shared.existingVideoURL(for: lesson.recording),
                 attemptVideoURL: RecordingStore.shared.existingVideoURL(for: attempt.recording)
             )
