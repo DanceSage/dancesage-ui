@@ -4,7 +4,7 @@ import CoreGraphics
 /// Talks to the Dance Sage platform. Everything here needs a session; the rest of
 /// the app does not.
 
-/// One refined body of a post, by tier: "refined" or "3d"; the status the platform reports.
+/// The 3D skeleton of a post, by tier — only "3d" exists; the status the platform reports.
 struct BodyTierSummary: Decodable { let status: String; let has_turntable: Bool? }
 
 struct PlatformVideo: Identifiable, Decodable {
@@ -27,7 +27,7 @@ struct PlatformVideo: Identifiable, Decodable {
     var thumb: String? = nil
     /// How many dancers the phone saw: one, or a couple.
     var dancers: Int? = nil
-    /// The refined bodies that exist for this post, by tier.
+    /// The 3D skeletons that exist for this post, by tier.
     var body: [String: BodyTierSummary]? = nil
 
     /// A finished 3D body: the post can be turned by hand.
@@ -139,7 +139,7 @@ struct FeedVideo: Identifiable, Decodable {
     let series: GroupRef?
     /// A still of the video with the skeleton on it, when the post has a video.
     let thumb: String?
-    /// The refined bodies that exist for this post, by tier.
+    /// The 3D skeletons that exist for this post, by tier.
     let body: [String: BodyTierSummary]?
 
     /// A finished 3D body: the post can be turned by hand.
@@ -378,7 +378,7 @@ struct DanceSagePlatform {
         var sharedCount: Int { from.reduce(0) { $0 + $1.videos.count } }
     }
 
-    /// The refined bodies of a post: which tiers exist and how far they are, and
+    /// The 3D skeletons of a post: which tiers exist and how far they are, and
     /// the best one to show, with a signed link to the viewer page.
     struct BodyInfo: Decodable {
         struct Tier: Decodable { let id: Int; let status: String; let has_mesh: Bool; let has_turntable: Bool? }
@@ -401,7 +401,7 @@ struct DanceSagePlatform {
         try JSONDecoder().decode(BodyInfo.self, from: try await get("v1/videos/\(videoID)/body"))
     }
 
-    /// Ask for a body: "refined" (both dancers, free) or "3d" (the paid plan).
+    /// Ask for the 3D skeleton. One tier: the phone does 2D for free, this is paid.
     func refine(videoID: Int, tier: String) async throws {
         try await send("v1/videos/\(videoID)/refine", body: ["tier": tier])
     }

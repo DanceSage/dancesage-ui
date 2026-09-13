@@ -45,7 +45,7 @@ struct PlatformVideoDetailView: View {
     @State private var replayFailed = false
     @State private var sharedWith: [PlatformGrant] = []
     @State private var showShare = false
-    /// The refined bodies, when the platform has any; the 3D pill opens the best one.
+    /// The 3D skeleton, when the platform has built one; the pill opens it.
     @State private var bodyInfo: DanceSagePlatform.BodyInfo?
     @State private var showBody = false
     @State private var refineMessage: String?
@@ -228,7 +228,7 @@ struct PlatformVideoDetailView: View {
                 HStack(alignment: .top, spacing: 8) {
                     LayerToggles(showVideo: $showVideo, showSkeleton: $showSkeleton, hasVideo: hasVideo)
                     if bodyInfo?.track?.view_url != nil {
-                        // The refined body, a real 3D figure you can turn: the same viewer as the web.
+                        // The 3D skeleton, a real figure you can turn: the same viewer as the web.
                         LayerPill(title: "3D", color: Color(red: 0.93, green: 0.28, blue: 0.78), isOn: false) {
                             player?.pause()
                             showBody = true
@@ -292,9 +292,9 @@ struct PlatformVideoDetailView: View {
             HStack(spacing: 8) {
                 tag(video.style)
                 tag(video.level)
-                if let s = bodyInfo?.summary, let state = s["3d"]?.status ?? s["refined"]?.status {
-                    Text(state == "done" ? (s["3d"]?.status == "done" ? "3D" : "Refined")
-                         : state == "failed" ? "Refine failed" : "Refining…")
+                if let state = bodyInfo?.summary["3d"]?.status {
+                    Text(state == "done" ? "3D"
+                         : state == "failed" ? "3D failed" : "Building the 3D skeleton…")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(state == "done" ? Color(red: 0.93, green: 0.28, blue: 0.78) : state == "failed" ? .red : .orange)
                         .padding(.horizontal, 8).padding(.vertical, 4)
@@ -360,17 +360,11 @@ struct PlatformVideoDetailView: View {
                         Button("Private") { Task { await onVisibilityChange("private") } }
                         if video.has_video {
                             Divider()
-                            // Refine: a body made after the fact on the platform's GPU.
-                            let refined = bodyInfo?.summary["refined"]?.status, three = bodyInfo?.summary["3d"]?.status
+                            // One fit off the phone, for a solo and a couple alike.
+                            let three = bodyInfo?.summary["3d"]?.status
                             Button(three == nil || three == "failed" ? "Make it 3D" : "3D · \(three!)",
                                    systemImage: "cube") { Task { await refine("3d") } }
                                 .disabled(three == "queued" || three == "running" || three == "done")
-                            if (video.dancers ?? 1) > 1 {
-                                // A couple only: the R&D engine that holds both dancers.
-                                Button(refined == nil || refined == "failed" ? "Refine both dancers" : "Refine · \(refined!)",
-                                       systemImage: "figure.socialdance") { Task { await refine("refined") } }
-                                    .disabled(refined == "queued" || refined == "running" || refined == "done")
-                            }
                         }
                         Divider()
                         Button("Share…", systemImage: "person.badge.plus") {
