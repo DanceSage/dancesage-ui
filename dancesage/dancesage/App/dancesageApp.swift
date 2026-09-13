@@ -2,14 +2,12 @@ import SwiftUI
 
 @main
 struct dancesageApp: App {
-    @StateObject private var watchedEvents = WatchedEventStore()
     @State private var importMessage = ""
     @State private var importFailed = false
 
     var body: some Scene {
         WindowGroup {
             AuthGateView()
-                .environmentObject(watchedEvents)
                 .onOpenURL { url in
                     importLesson(from: url)
                 }
