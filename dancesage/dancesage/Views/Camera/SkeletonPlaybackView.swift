@@ -277,9 +277,10 @@ struct SkeletonPlaybackView: View {
                     }
                 }
 
-                HStack(spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
                     LayerToggles(showVideo: $showVideo, showSkeleton: $showSkeleton, hasVideo: videoURL != nil)
                     if recordingMode == .partner {
+                        Spacer(minLength: 0)
                         DancerToggles(labels: ["Dancer 1", "Dancer 2"],
                                       colors: [Color(red: 0.20, green: 0.95, blue: 0.92), Color(red: 1.0, green: 0.78, blue: 0.18)],
                                       hidden: $hiddenDancers)

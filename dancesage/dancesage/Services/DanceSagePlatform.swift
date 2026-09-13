@@ -4,6 +4,9 @@ import CoreGraphics
 /// Talks to the Dance Sage platform. Everything here needs a session; the rest of
 /// the app does not.
 
+/// The 3D skeleton of a post, by tier — only "3d" exists; the status the platform reports.
+struct BodyTierSummary: Decodable { let status: String; let has_turntable: Bool? }
+
 struct PlatformVideo: Identifiable, Decodable {
     let id: Int
     let title: String
@@ -26,6 +29,13 @@ struct PlatformVideo: Identifiable, Decodable {
     var by: FeedVideo.By? = nil
     /// A still of the video with the skeleton on it, when the post has a video.
     var thumb: String? = nil
+    /// How many dancers the phone saw: one, or a couple.
+    var dancers: Int? = nil
+    /// The 3D skeletons that exist for this post, by tier.
+    var body: [String: BodyTierSummary]? = nil
+
+    /// A finished 3D body: the post can be turned by hand.
+    var has3D: Bool { body?["3d"]?.status == "done" }
 
     var seconds: Int { fps > 0 ? frames / fps : 0 }
     var duration: String { String(format: "%d:%02d", seconds / 60, seconds % 60) }
@@ -133,6 +143,11 @@ struct FeedVideo: Identifiable, Decodable {
     let series: GroupRef?
     /// A still of the video with the skeleton on it, when the post has a video.
     let thumb: String?
+    /// The 3D skeletons that exist for this post, by tier.
+    let body: [String: BodyTierSummary]?
+
+    /// A finished 3D body: the post can be turned by hand.
+    var has3D: Bool { body?["3d"]?.status == "done" }
 
     struct GroupRef: Decodable { let id: Int; let name: String }
 
@@ -149,7 +164,8 @@ struct FeedVideo: Identifiable, Decodable {
         PlatformVideo(id: id, title: title, note: note, style: style, level: level,
                       visibility: visibility, frames: frames, has_video: has_video,
                       pose_key: pose_key, pose2d_key: pose2d_key,
-                      video_key: video_key, fps: fps, reply_to: reply_to, mirrored: mirrored, thumb: thumb)
+                      video_key: video_key, fps: fps, reply_to: reply_to, mirrored: mirrored, thumb: thumb,
+                      dancers: dancers, body: body)
     }
 }
 
@@ -364,6 +380,51 @@ struct DanceSagePlatform {
         let series_offers: [PlatformSeries]
         var offerCount: Int { offers.reduce(0) { $0 + $1.videos.count } }
         var sharedCount: Int { from.reduce(0) { $0 + $1.videos.count } }
+    }
+
+    /// The 3D skeletons of a post: which tiers exist and how far they are, and
+    /// the best one to show, with a signed link to the viewer page.
+    struct BodyInfo: Decodable {
+        struct Tier: Decodable { let id: Int; let status: String; let has_mesh: Bool; let has_turntable: Bool? }
+        struct Track: Decodable {
+            let id: Int
+            let tier: String
+            let engine: String
+            let fps: Double
+            let dancers: Int
+            let frames: Int
+            let view_url: String?
+            /// The body's files by name (joints, meta, mesh, turntable), as platform paths.
+            let files: [String: String]?
+        }
+        let summary: [String: Tier]
+        let track: Track?
+    }
+
+    func body(videoID: Int) async throws -> BodyInfo {
+        try JSONDecoder().decode(BodyInfo.self, from: try await get("v1/videos/\(videoID)/body"))
+    }
+
+    /// One of a body's files by the platform path `BodyInfo` handed back — a full
+    /// path with its own signed query, so it is joined to the base rather than
+    /// appended as a path component, which would swallow the token.
+    func bodyFile(path: String) async throws -> Data {
+        guard let base = AppConfig.platformBaseURL else { throw PlatformError.notConfigured }
+        guard let url = URL(string: path, relativeTo: base) else {
+            throw PlatformError.server("That 3D body is not where it said it was.")
+        }
+        var req = URLRequest(url: url)
+        if let token = DanceSageAuth.shared.sessionToken {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await session.data(for: req)
+        try check(response, data)
+        return data
+    }
+
+    /// Ask for the 3D skeleton. One tier: the phone does 2D for free, this is paid.
+    func refine(videoID: Int, tier: String) async throws {
+        try await send("v1/videos/\(videoID)/refine", body: ["tier": tier])
     }
 
     /// A dancer's public page: series as folders, then the loose posts.
@@ -629,6 +690,11 @@ struct DanceSagePlatform {
         let data = try await get(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
         Self.imageCache.setObject(data as NSData, forKey: key)
         return data
+    }
+
+    /// A file behind the session, uncached: a body's turntable video, say.
+    func fileData(path: String) async throws -> Data {
+        try await get(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
     }
 
     private func get(_ path: String) async throws -> Data {

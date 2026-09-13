@@ -64,6 +64,10 @@ struct PlatformVideoDetailView: View {
     @State private var replayFailed = false
     @State private var sharedWith: [PlatformGrant] = []
     @State private var showShare = false
+    /// The 3D skeleton, when the platform has built one; the pill opens it.
+    @State private var bodyInfo: DanceSagePlatform.BodyInfo?
+    @State private var showBody = false
+    @State private var refineMessage: String?
     /// Exports for TikTok, Instagram and the rest: the clip, or the skeleton
     /// rendered onto it — the same menu the on-phone player has.
     @State private var exportedVideo: ExportedVideo?
@@ -180,6 +184,15 @@ struct PlatformVideoDetailView: View {
             } message: {
                 Text(exportError)
             }
+            .sheet(isPresented: $showBody) {
+                if let path = bodyInfo?.track?.view_url, let base = AppConfig.platformBaseURL,
+                   let url = URL(string: path.trimmingCharacters(in: CharacterSet(charactersIn: "/")), relativeTo: base)?.absoluteURL {
+                    BodyViewerSheet(url: url, title: video.title)
+                }
+            }
+            .alert("Refine", isPresented: Binding(get: { refineMessage != nil }, set: { if !$0 { refineMessage = nil } })) {
+                Button("OK", role: .cancel) { refineMessage = nil }
+            } message: { Text(refineMessage ?? "") }
             .fullScreenCover(isPresented: $showReplay) {
                 if let replay {
                     LessonOverlayView(reference: replay.reference, attempt: replay.attempt,
@@ -190,7 +203,7 @@ struct PlatformVideoDetailView: View {
                 }
             }
         }
-        .task { await load(); await loadGrants(); await loadReplay() }
+        .task { await load(); await loadGrants(); await loadReplay(); await loadBody() }
         .onReceive(timer) { now in
             // Skeleton-only posts run on this clock; with a video, AVPlayer
             // owns the time and reports it through the observer.
@@ -233,8 +246,16 @@ struct PlatformVideoDetailView: View {
             .frame(width: geo.size.width, height: geo.size.height)
             .overlay(alignment: .top) {
                 // The switches live over the picture: the bottom is for transport.
-                HStack(spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
                     LayerToggles(showVideo: $showVideo, showSkeleton: $showSkeleton, hasVideo: hasVideo)
+                    if bodyInfo?.track?.view_url != nil {
+                        // The 3D skeleton, a real figure you can turn: the same viewer as the web.
+                        LayerPill(title: "3D", color: Color(red: 0.93, green: 0.28, blue: 0.78), isOn: false) {
+                            player?.pause()
+                            showBody = true
+                        }
+                    }
+                    Spacer(minLength: 0)
                     if let track, track.dancers.count > 1 {
                         DancerToggles(
                             labels: replay != nil ? ["Teacher", "Student"]
@@ -244,6 +265,7 @@ struct PlatformVideoDetailView: View {
                         )
                     }
                 }
+                .padding(.horizontal, 10)
                 .padding(.top, 10)
             }
             // Drag to turn a 3D skeleton, exactly as dragging the web canvas does.
@@ -291,6 +313,14 @@ struct PlatformVideoDetailView: View {
             HStack(spacing: 8) {
                 tag(video.style)
                 tag(video.level)
+                if let state = bodyInfo?.summary["3d"]?.status {
+                    Text(state == "done" ? "3D"
+                         : state == "failed" ? "3D failed" : "Building the 3D skeleton…")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(state == "done" ? Color(red: 0.93, green: 0.28, blue: 0.78) : state == "failed" ? .red : .orange)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(.white.opacity(0.08), in: Capsule())
+                }
                 Spacer()
                 if video.has_video {
                     Menu {
@@ -298,6 +328,13 @@ struct PlatformVideoDetailView: View {
                             exportOriginal()
                         } label: {
                             Label("Share Video", systemImage: "video")
+                        }
+                        if bodyInfo?.track?.files?["turntable"] != nil {
+                            Button {
+                                exportTurntable()
+                            } label: {
+                                Label("3D Turn", systemImage: "rotate.3d")
+                            }
                         }
                         if track != nil {
                             Menu {
@@ -342,6 +379,14 @@ struct PlatformVideoDetailView: View {
                     Menu {
                         Button("Public") { Task { await onVisibilityChange("public") } }
                         Button("Private") { Task { await onVisibilityChange("private") } }
+                        if video.has_video {
+                            Divider()
+                            // One fit off the phone, for a solo and a couple alike.
+                            let three = bodyInfo?.summary["3d"]?.status
+                            Button(three == nil || three == "failed" ? "Make it 3D" : "3D · \(three!)",
+                                   systemImage: "cube") { Task { await refine("3d") } }
+                                .disabled(three == "queued" || three == "running" || three == "done")
+                        }
                         Divider()
                         Button("Share…", systemImage: "person.badge.plus") {
                             player?.pause()
@@ -493,7 +538,9 @@ struct PlatformVideoDetailView: View {
     /// Only a two-person 2D track is a lesson attempt; anything else has no
     /// teacher to compare against.
     private func loadReplay() async {
-        guard !video.pose2d_key.isEmpty,
+        // The lessons replay (overlaid, side by side) is for attempts only. A couple
+        // dancing together is a normal post: one video, two skeletons, nothing else.
+        guard video.reply_to != nil, !video.pose2d_key.isEmpty,
               let raw = try? await DanceSagePlatform.shared.poseTrack(key: video.pose2d_key),
               raw.j.count == 2, raw.isTwoDimensional else { return }
         func recording(_ dancer: [[[Double]]], named name: String, times: [Double]?) -> DanceRecording {
@@ -541,6 +588,23 @@ struct PlatformVideoDetailView: View {
         }
     }
 
+    /// The refined body turning in place, rendered on the GPU when the body was made.
+    private func exportTurntable() {
+        guard !isExporting, let path = bodyInfo?.track?.files?["turntable"] else { return }
+        player?.pause()
+        isExporting = true; exportProgress = 0
+        Task {
+            defer { isExporting = false }
+            guard let data = try? await DanceSagePlatform.shared.fileData(path: path) else {
+                exportError = "The 3D turn could not be fetched."; return
+            }
+            let kept = FileManager.default.temporaryDirectory.appendingPathComponent("turn-\(video.id).mp4")
+            try? FileManager.default.removeItem(at: kept)
+            guard (try? data.write(to: kept)) != nil else { exportError = "The 3D turn could not be saved."; return }
+            exportedVideo = ExportedVideo(url: kept)
+        }
+    }
+
     /// The skeleton rendered onto the clip, or alone, through the same
     /// exporter the on-phone player uses.
     private func exportSkeleton(_ content: VideoExporter.Content, audio: Bool) {
@@ -570,6 +634,28 @@ struct PlatformVideoDetailView: View {
             } catch {
                 exportError = error.localizedDescription
             }
+        }
+    }
+
+    // MARK: - Refine
+
+    private func loadBody() async {
+        bodyInfo = try? await DanceSagePlatform.shared.body(videoID: video.id)
+        // While something is queued or running, look again every few seconds.
+        while let s = bodyInfo?.summary, s.values.contains(where: { $0.status == "queued" || $0.status == "running" }) {
+            try? await Task.sleep(for: .seconds(8))
+            bodyInfo = try? await DanceSagePlatform.shared.body(videoID: video.id)
+        }
+    }
+
+    private func refine(_ tier: String) async {
+        do {
+            try await DanceSagePlatform.shared.refine(videoID: video.id, tier: tier)
+            refineMessage = tier == "3d" ? "Queued. The 3D body takes a few minutes; the 3D pill appears when it is ready."
+                                         : "Queued. Both dancers as bodies in a few minutes."
+            await loadBody()
+        } catch {
+            refineMessage = error.localizedDescription
         }
     }
 
