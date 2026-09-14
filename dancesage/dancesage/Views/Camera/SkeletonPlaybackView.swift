@@ -660,9 +660,18 @@ struct SkeletonPlaybackView: View {
     func updatePlaybackPosition() {
         guard isPlaying else { return }
 
+        // One clock. When there is a clip, the clip is it — the same player draws the
+        // video and carries the sound, so reading its time is the only way the
+        // skeleton and the picture cannot drift. Asking for .playing first meant
+        // falling back to a wall clock whenever the player was merely buffering, had
+        // just been seeked, or was settling into a new rate, and the two then walked
+        // apart — worst at speeds other than 1x, where the wall clock multiplies by
+        // rate and the player already has.
         let elapsed: Double
-        if let audioPlayer, audioPlayer.timeControlStatus == .playing {
-            elapsed = audioPlayer.currentTime().seconds
+        if let audioPlayer, audioPlayer.currentItem != nil {
+            let t = audioPlayer.currentTime().seconds
+            guard t.isFinite else { return }
+            elapsed = t
         } else if let playbackStartedAt {
             elapsed = playbackStartTime + Date().timeIntervalSince(playbackStartedAt) * rate
         } else {
