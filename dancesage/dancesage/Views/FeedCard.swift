@@ -93,7 +93,7 @@ struct FeedCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .contentShape(RoundedRectangle(cornerRadius: 18))
         .onTapGesture(perform: onOpen)
-        .task(id: video.pose_key) { track = await SkeletonTrack.load(key: video.pose_key) 
+        .task(id: video.overlayKey) { track = await SkeletonTrack.load(key: video.overlayKey) 
             if let thumb = video.thumb, !thumb.isEmpty,
                let data = try? await DanceSagePlatform.shared.imageData(path: thumb) {
                 still = UIImage(data: data)

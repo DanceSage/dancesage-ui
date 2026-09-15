@@ -131,6 +131,10 @@ struct FeedVideo: Identifiable, Decodable {
     let video_key: String
     let note: String
     let by: By
+
+    /// The 2D track overlays the video; the 3D one is the standalone skeleton.
+    /// Drawing the world track over pixels puts the dancer nowhere near themselves.
+    var overlayKey: String { pose2d_key.isEmpty ? pose_key : pose2d_key }
     /// Set on a clip someone shared with you: the grant behind it, so you can decline.
     let grant_id: Int?
     /// The group it came through, when it did.
@@ -245,6 +249,10 @@ struct GroupWall: Decodable {
         let id: Int
         let title: String
         let pose_key: String
+        /// The screen-aligned track. Without it the overlay falls back to the world
+        /// track — metres, y up, centred on its own bounds — which lands nowhere
+        /// near the dancer. Optional so an older payload still decodes.
+        let pose2d_key: String?
         let has_video: Bool
         let frames: Int
         let fps: Int
@@ -253,7 +261,8 @@ struct GroupWall: Decodable {
         let replies: [FeedVideo]
         var video: PlatformVideo {
             PlatformVideo(id: id, title: title, note: "", style: "", level: "", visibility: "private",
-                          frames: frames, has_video: has_video, pose_key: pose_key, pose2d_key: "",
+                          frames: frames, has_video: has_video, pose_key: pose_key,
+                          pose2d_key: pose2d_key ?? "",
                           video_key: "", fps: fps)
         }
     }
