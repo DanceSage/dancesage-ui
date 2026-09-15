@@ -10,6 +10,12 @@ struct SkeletonTrack {
     let bones: [[Int]]
     let frames: Int
     let fps: Double
+    /// When each frame was actually captured. A phone drops frames, so the declared
+    /// fps is a nominal figure and the real spacing is uneven — 203 frames called
+    /// 20 fps spanning 13.8 seconds of video, not 10.2. Multiplying by fps instead
+    /// of reading these ran the skeleton a third too fast and drew the dancer's
+    /// arms where they had been a second earlier. skeleton.js has always used them.
+    let times: [Double]?
     let is2d: Bool
     /// True only when depth actually varies. A track uploaded from the phone carries
     /// three numbers per joint but zero depth, and turning that would just squash the
@@ -19,7 +25,22 @@ struct SkeletonTrack {
     let centre: (x: Double, y: Double, z: Double)
     let span: Double
 
-    var duration: Double { fps > 0 ? Double(frames) / fps : 0 }
+    var duration: Double { times?.last ?? (fps > 0 ? Double(frames) / fps : 0) }
+
+    /// `frameAtTime()` in skeleton.js: the real timestamps when we have them, the
+    /// nominal rate when we do not. Fractional, so the pose is interpolated.
+    func frame(at seconds: Double) -> Double {
+        guard let t = times, t.count > 1 else { return seconds * fps }
+        if seconds <= t[0] { return 0 }
+        if seconds >= t[t.count - 1] { return Double(t.count - 1) }
+        var lo = 0, hi = t.count - 1
+        while lo + 1 < hi {
+            let mid = (lo + hi) / 2
+            if t[mid] <= seconds { lo = mid } else { hi = mid }
+        }
+        let span = t[hi] - t[lo]
+        return Double(lo) + (span > 1e-9 ? (seconds - t[lo]) / span : 0)
+    }
 
     static let bones33 = [[0,2],[0,5],[2,7],[5,8],[9,10],
         [11,12],[11,13],[13,15],[12,14],[14,16],
@@ -64,6 +85,7 @@ struct SkeletonTrack {
             bones: (first.first?.count ?? 33) == 17 ? bones17 : bones33,
             frames: raw.j.map(\.count).min() ?? first.count,
             fps: raw.fps > 0 ? Double(raw.fps) : 30,
+            times: (raw.t?.count == (raw.j.map(\.count).min() ?? 0)) ? raw.t : nil,
             is2d: is2d,
             hasDepth: hasDepth,
             centre: ((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2,
@@ -110,7 +132,7 @@ struct SkeletonTrackView: View {
     /// same, and it is the difference between fluid and juddery at low frame rates.
     private func position(for date: Date) -> Double {
         guard track.frames > 0 else { return 0 }
-        if let time { return min(Double(track.frames - 1), max(0, time * track.fps)) }
+        if let time { return min(Double(track.frames - 1), max(0, track.frame(at: time))) }
         return (date.timeIntervalSinceReferenceDate * track.fps)
             .truncatingRemainder(dividingBy: Double(track.frames))
     }
