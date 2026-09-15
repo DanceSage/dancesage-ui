@@ -4,3 +4,16 @@ target 'dancesage' do
   use_frameworks!
   pod 'MediaPipeTasksVision'
 end
+
+# MediaPipe's podspec still declares iOS 12.0, and CocoaPods leaves each pod on
+# its own minimum. Xcode Cloud's toolchain refuses anything below 15.0 and fails
+# the archive before compiling — while a local Xcode is more forgiving, which is
+# why this only ever broke in CI. Everything here is built for the app's own
+# minimum anyway.
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '17.0'
+    end
+  end
+end
