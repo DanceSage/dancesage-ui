@@ -60,10 +60,19 @@ class PoseDetector: NSObject, ObservableObject {
         }
     }
     
-    func detectAsync(image: UIImage, timestamp: Int) {
+    /// The camera's own buffer, handed straight to MediaPipe. The old path went
+    /// CVPixelBuffer -> CIImage -> CGImage -> UIImage -> MPImage, and the CGImage
+    /// step is a synchronous full-resolution copy running on the capture queue.
+    /// At the .high preset that is a 1080p conversion every frame, which backed
+    /// the queue up until AVFoundation discarded the frames and the floor stayed
+    /// empty. Vision never had the problem because it takes the buffer directly.
+    func detectAsync(pixelBuffer: CVPixelBuffer, timestamp: Int) {
         guard let poseLandmarker = poseLandmarker else { return }
-        guard let mpImage = try? MPImage(uiImage: image) else {
-            print("❌ Failed to convert UIImage to MPImage")
+        let mpImage: MPImage
+        do {
+            mpImage = try MPImage(pixelBuffer: pixelBuffer)
+        } catch {
+            print("❌ Failed to wrap pixel buffer as MPImage: \(error)")
             return
         }
         do {
@@ -193,10 +202,24 @@ extension PoseDetector: PoseLandmarkerLiveStreamDelegate {
 
         let stablePoses = stabilize(allPoses)
 
+        // The metric 3D the model computes alongside the image landmarks. Hip-centred
+        // and in metres, so it does not change scale as a dancer walks toward the
+        // camera — which is why it, and not the flat landmarks, is what gets recorded
+        // and compared. Read it here or it is thrown away every frame.
+        var allWorld: [[PosePoint3D]] = []
+        for pose in result.worldLandmarks {
+            allWorld.append(pose.map {
+                PosePoint3D(x: Float($0.x), y: Float($0.y), z: Float($0.z))
+            })
+        }
+        let stableWorld = stabilizeWorld(allWorld)
+
         DispatchQueue.main.async {
             self.keypoints = stablePoses
+            self.worldKeypoints = stableWorld
             if self.isRecording {
                 self.recordedKeypoints.append(stablePoses)
+                self.recordedWorldKeypoints.append(stableWorld)
                 let startedAt = self.recordingStartedAt ?? ProcessInfo.processInfo.systemUptime
                 self.recordedFrameTimes.append(ProcessInfo.processInfo.systemUptime - startedAt)
             }

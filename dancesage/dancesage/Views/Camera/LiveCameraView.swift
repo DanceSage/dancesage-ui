@@ -58,7 +58,6 @@ struct LiveCameraView: UIViewRepresentable {
         private let videoQueue = DispatchQueue(label: "com.dancesage.capture.frames", qos: .userInitiated)
         private let videoOutput = AVCaptureVideoDataOutput()
         private let movieOutput = AVCaptureMovieFileOutput()
-        private let imageContext = CIContext()
         private let poseDetector: PoseDetector
         private let visionDetector: VisionPoseDetector
 
@@ -284,9 +283,7 @@ struct LiveCameraView: UIViewRepresentable {
             if isPartnerMode {
                 visionDetector.detectPoses(in: pixelBuffer, orientation: .up)
             } else {
-                let image = CIImage(cvPixelBuffer: pixelBuffer)
-                guard let cgImage = imageContext.createCGImage(image, from: image.extent) else { return }
-                poseDetector.detectAsync(image: UIImage(cgImage: cgImage), timestamp: timestamp)
+                poseDetector.detectAsync(pixelBuffer: pixelBuffer, timestamp: timestamp)
             }
         }
 
