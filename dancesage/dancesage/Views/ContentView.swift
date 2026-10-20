@@ -2,8 +2,10 @@ import SwiftUI
 import AVFoundation
 
 struct ContentView: View {
-    /// MediaPipe for both modes: one pose for styling, two for partner work.
+    // MediaPipe for single person (Styling mode)
     @StateObject private var poseDetector = PoseDetector()
+    // Apple Vision for multi-person (Partner mode) - much better detection!
+    @StateObject private var visionDetector = VisionPoseDetector()
     
     @State private var showCamera = false
     @State private var showPlayback = false
@@ -14,16 +16,22 @@ struct ContentView: View {
     @State private var capturedVideoURL: URL?
     @State private var captureError = ""
     
+    // Use Vision for Partner mode, MediaPipe for Styling
     private var isPartnerMode: Bool { selectedMode == .partner }
-    private var currentKeypoints: [[CGPoint]] { poseDetector.keypoints }
-    private var currentRecordedKeypoints: [[[CGPoint]]] { poseDetector.recordedKeypoints }
-    /// Metric 3D is kept for styling only. In partner mode the tracker reorders
-    /// the flat poses to keep each dancer in their slot, and the world poses are
-    /// not reordered with them, so a partner recording stays flat as before.
+    private var currentKeypoints: [[CGPoint]] {
+        isPartnerMode ? visionDetector.keypoints : poseDetector.keypoints
+    }
+    private var currentRecordedKeypoints: [[[CGPoint]]] {
+        isPartnerMode ? visionDetector.recordedKeypoints : poseDetector.recordedKeypoints
+    }
+    /// Only MediaPipe produces metric 3D; Apple Vision has no equivalent, so a
+    /// partner recording carries none and everything downstream treats it as flat.
     private var currentRecordedWorld: [[[PosePoint3D]]] {
         isPartnerMode ? [] : poseDetector.recordedWorldKeypoints
     }
-    private var currentRecordedFrameTimes: [Double] { poseDetector.recordedFrameTimes }
+    private var currentRecordedFrameTimes: [Double] {
+        isPartnerMode ? visionDetector.recordedFrameTimes : poseDetector.recordedFrameTimes
+    }
     private var isRecording: Bool { recordingRequested || captureActive }
     
     var body: some View {
@@ -31,6 +39,7 @@ struct ContentView: View {
             ZStack {
                 LiveCameraView(
                     poseDetector: poseDetector,
+                    visionDetector: visionDetector,
                     isPartnerMode: isPartnerMode,
                     cameraPosition: cameraPosition,
                     recordingRequested: recordingRequested,
@@ -40,7 +49,7 @@ struct ContentView: View {
                 )
                 .ignoresSafeArea()
                 
-                SkeletonOverlay(keypoints: currentKeypoints)
+                SkeletonOverlay(keypoints: currentKeypoints, useVisionIndices: isPartnerMode)
                     .ignoresSafeArea()
                 
                 VStack {
@@ -51,6 +60,7 @@ struct ContentView: View {
                             showCamera = false
                             removeTemporaryVideo()
                             poseDetector.clearRecording()
+                            visionDetector.clearRecording()
                         }) {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 40))
@@ -114,7 +124,10 @@ struct ContentView: View {
                 }
             }
             .onAppear {
-                poseDetector.setMode(numPoses: isPartnerMode ? 2 : 1)
+                if !isPartnerMode {
+                    // Set MediaPipe mode for single person
+                    poseDetector.setMode(numPoses: 1)
+                }
                 
                 let saved = loadAllRecordings()
                 print("📚 Loaded \(saved.count) saved recordings:")
@@ -126,6 +139,7 @@ struct ContentView: View {
                 SkeletonPlaybackView(
                     keypoints: currentRecordedKeypoints,
                     allowSave: true,
+                    useVisionIndices: isPartnerMode,
                     fps: 20,
                     frameTimes: currentRecordedFrameTimes,
                     worldKeypoints: currentRecordedWorld,
@@ -157,24 +171,34 @@ struct ContentView: View {
     private func beginRecording() {
         removeTemporaryVideo()
         poseDetector.clearRecording()
+        visionDetector.clearRecording()
         recordingRequested = true
     }
 
     private func recordingStarted() {
         captureActive = true
-        poseDetector.startRecording()
+        if isPartnerMode {
+            visionDetector.startRecording()
+        } else {
+            poseDetector.startRecording()
+        }
     }
 
     private func recordingFinished(_ url: URL) {
         recordingRequested = false
         captureActive = false
-        poseDetector.stopRecording()
+        if isPartnerMode {
+            visionDetector.stopRecording()
+        } else {
+            poseDetector.stopRecording()
+        }
         capturedVideoURL = url
     }
 
     private func switchCamera() {
         removeTemporaryVideo()
         poseDetector.clearRecording()
+        visionDetector.clearRecording()
         cameraPosition = cameraPosition == .back ? .front : .back
     }
 

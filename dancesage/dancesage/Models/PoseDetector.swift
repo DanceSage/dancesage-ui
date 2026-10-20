@@ -10,11 +10,7 @@ class PoseDetector: NSObject, ObservableObject {
     @Published var isRecording = false
     
     private var poseLandmarker: PoseLandmarker?
-    /// The camera queue reads the landmarker while a mode switch replaces it.
-    private let landmarkerLock = NSLock()
     private var currentNumPoses: Int = 1
-    /// Partner mode only: keeps Dancer 1 and Dancer 2 the same people across frames.
-    private let partnerTracker = PartnerPoseTracker()
     private var recordingStartedAt: TimeInterval?
     private var smoothedKeypoints: [[CGPoint]] = []
 
@@ -31,12 +27,9 @@ class PoseDetector: NSObject, ObservableObject {
         setupPoseLandmarker(numPoses: 1)
     }
     
-    /// One person for styling, two for partner work — the same model either way,
-    /// so both modes give 33 points and run on Android as they do here.
     func setMode(numPoses: Int) {
         guard numPoses != currentNumPoses else { return }
         currentNumPoses = numPoses
-        partnerTracker.reset()
         setupPoseLandmarker(numPoses: numPoses)
         print("🔄 Switched to \(numPoses == 1 ? "Styling" : "Partner") mode")
     }
@@ -60,10 +53,7 @@ class PoseDetector: NSObject, ObservableObject {
         options.poseLandmarkerLiveStreamDelegate = self
         
         do {
-            let landmarker = try PoseLandmarker(options: options)
-            landmarkerLock.lock()
-            poseLandmarker = landmarker
-            landmarkerLock.unlock()
+            poseLandmarker = try PoseLandmarker(options: options)
             print("✅ PoseLandmarker initialized with numPoses = \(numPoses)")
         } catch {
             print("❌ Error creating PoseLandmarker: \(error)")
@@ -77,10 +67,7 @@ class PoseDetector: NSObject, ObservableObject {
     /// the queue up until AVFoundation discarded the frames and the floor stayed
     /// empty. Vision never had the problem because it takes the buffer directly.
     func detectAsync(pixelBuffer: CVPixelBuffer, timestamp: Int) {
-        landmarkerLock.lock()
-        let poseLandmarker = self.poseLandmarker
-        landmarkerLock.unlock()
-        guard let poseLandmarker else { return }
+        guard let poseLandmarker = poseLandmarker else { return }
         let mpImage: MPImage
         do {
             mpImage = try MPImage(pixelBuffer: pixelBuffer)
@@ -111,12 +98,7 @@ class PoseDetector: NSObject, ObservableObject {
               + "\(recordedWorldKeypoints.count) with metric 3D")
     }
     
-    func resetTracking() {
-        partnerTracker.reset()
-    }
-
     func clearRecording() {
-        partnerTracker.reset()
         recordedKeypoints = []
         recordedWorldKeypoints = []
         recordedFrameTimes = []
@@ -218,18 +200,7 @@ extension PoseDetector: PoseLandmarkerLiveStreamDelegate {
             allPoses.append(points)
         }
 
-        // Partner work goes through the tracker, which smooths as well as keeping
-        // each dancer in their own slot; styling has one person and only smooths.
-        let stablePoses: [[CGPoint]]
-        if currentNumPoses > 1 {
-            let visibility = result.landmarks.map { pose -> Float in
-                let seen = pose.compactMap { $0.visibility?.floatValue }
-                return seen.isEmpty ? 1 : seen.reduce(0, +) / Float(seen.count)
-            }
-            stablePoses = partnerTracker.update(poses: allPoses, visibility: visibility)
-        } else {
-            stablePoses = stabilize(allPoses)
-        }
+        let stablePoses = stabilize(allPoses)
 
         // The metric 3D the model computes alongside the image landmarks. Hip-centred
         // and in metres, so it does not change scale as a dancer walks toward the
