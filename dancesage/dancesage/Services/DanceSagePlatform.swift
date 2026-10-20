@@ -197,24 +197,6 @@ struct PlatformGroup: Identifiable, Decodable {
     let owner: Member?
 }
 
-/// A folder in My videos, shared as a standing offer.
-struct DancerPage: Decodable {
-    struct Folder: Identifiable, Decodable {
-        let id: Int
-        let name: String
-        let videos: [FeedVideo]
-    }
-    let handle: String
-    let display_name: String
-    let bio: String
-    let city: String
-    let styles: String
-    let levels: String
-    let avatar: String
-    let folders: [Folder]
-    let videos: [FeedVideo]
-}
-
 struct PlatformSeries: Identifiable, Decodable {
     struct Who: Identifiable, Decodable {
         let grant_id: Int
@@ -434,11 +416,6 @@ struct DanceSagePlatform {
     /// Ask for the 3D skeleton. One tier: the phone does 2D for free, this is paid.
     func refine(videoID: Int, tier: String) async throws {
         try await send("v1/videos/\(videoID)/refine", body: ["tier": tier])
-    }
-
-    /// A dancer's public page: series as folders, then the loose posts.
-    func dancer(handle: String) async throws -> DancerPage {
-        try JSONDecoder().decode(DancerPage.self, from: try await get("v1/dancers/\(handle)"))
     }
 
     func inbox() async throws -> Inbox {
