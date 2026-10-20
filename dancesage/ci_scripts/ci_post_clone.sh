@@ -17,4 +17,13 @@ echo "--- pod install"
 cd "$CI_PRIMARY_REPOSITORY_PATH/dancesage"
 pod install --repo-update
 
+# The pose model is gitignored (30 MB), so a cloud build would ship without it
+# and pose detection would silently do nothing. Fetch Google's file and refuse
+# to build if it is not the exact one the app was tuned on.
+echo "--- fetching the MediaPipe pose model"
+MODEL="$CI_PRIMARY_REPOSITORY_PATH/dancesage/dancesage/pose_landmarker_heavy.task"
+curl -fsSL -o "$MODEL" \
+  https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task
+echo "64437af838a65d18e5ba7a0d39b465540069bc8aae8308de3e318aad31fcbc7b  $MODEL" | shasum -a 256 -c -
+
 echo "--- ready: $(ls -d Pods >/dev/null 2>&1 && echo 'Pods present' || echo 'PODS MISSING')"
