@@ -182,7 +182,6 @@ struct PlatformProfileView: View {
             SkeletonPlaybackView(
                 keypoints: recording.keypoints,
                 allowSave: false,
-                useVisionIndices: recording.mode == .partner,
                 beats: recording.beats ?? [],
                 bpm: recording.bpm ?? 0,
                 fps: recording.fps ?? 15,

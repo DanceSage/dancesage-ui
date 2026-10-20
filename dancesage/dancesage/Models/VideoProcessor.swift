@@ -1,6 +1,5 @@
 import Foundation
 import AVFoundation
-import Vision
 import UIKit
 import Combine
 import MediaPipeTasksVision
@@ -11,19 +10,22 @@ class VideoProcessor: ObservableObject {
     @Published var isProcessing = false
     @Published var progress: Double = 0.0
     
-    private var poseLandmarker: PoseLandmarker?  // MediaPipe — styling only
+    /// MediaPipe for both modes: one pose for styling, two for partner work.
+    private var poseLandmarker: PoseLandmarker?
     private var isPartnerMode: Bool = false
     private let processingQueue = DispatchQueue(label: "com.dancesage.video-processing", qos: .utility)
     
     init() {
-        setupMediaPipe()
+        setupMediaPipe(numPoses: 1)
     }
     
     func setPartnerMode(_ enabled: Bool) {
+        guard enabled != isPartnerMode else { return }
         isPartnerMode = enabled
+        setupMediaPipe(numPoses: enabled ? 2 : 1)
     }
     
-    private func setupMediaPipe() {
+    private func setupMediaPipe(numPoses: Int) {
         guard let modelPath = Bundle.main.path(forResource: "pose_landmarker_heavy", ofType: "task") else {
             print("❌ Model file not found")
             return
@@ -32,7 +34,7 @@ class VideoProcessor: ObservableObject {
         let options = PoseLandmarkerOptions()
         options.baseOptions.modelAssetPath = modelPath
         options.runningMode = .image
-        options.numPoses = 1
+        options.numPoses = numPoses
         options.minPoseDetectionConfidence = 0.3
         options.minPosePresenceConfidence = 0.3
         options.minTrackingConfidence = 0.3
@@ -46,7 +48,7 @@ class VideoProcessor: ObservableObject {
     }
     
     func processVideo(url: URL) {
-        let mode = isPartnerMode ? "Apple Vision (Partner)" : "MediaPipe 33pt (Styling)"
+        let mode = isPartnerMode ? "MediaPipe 33pt x2 (Partner)" : "MediaPipe 33pt (Styling)"
         print("🎬 STARTING VIDEO PROCESSING — \(mode)")
         
         isProcessing = true
@@ -114,12 +116,8 @@ class VideoProcessor: ObservableObject {
                 let cgImage = try generator.copyCGImage(at: time, actualTime: nil)
                 frameCount += 1
                 
-                let poses: [[CGPoint]]?
-                if partnerMode {
-                    poses = detectPoseVision(in: cgImage, tracker: partnerTracker)
-                } else {
-                    poses = detectPoseMediaPipe(in: cgImage)
-                }
+                let poses = detectPoseMediaPipe(in: cgImage,
+                                                tracker: partnerMode ? partnerTracker : nil)
 
                 if poses != nil {
                     detectedCount += 1
@@ -148,8 +146,9 @@ class VideoProcessor: ObservableObject {
         publishPending(progress: duration, finished: true)
     }
     
-    // MARK: - MediaPipe — Styling (33 points, single person)
-    private func detectPoseMediaPipe(in cgImage: CGImage) -> [[CGPoint]]? {
+    // MARK: - MediaPipe (33 points; two people in partner mode)
+    private func detectPoseMediaPipe(in cgImage: CGImage,
+                                     tracker: PartnerPoseTracker?) -> [[CGPoint]]? {
         guard let poseLandmarker = poseLandmarker else { return nil }
         
         let uiImage = UIImage(cgImage: cgImage)
@@ -157,32 +156,19 @@ class VideoProcessor: ObservableObject {
         
         do {
             let result = try poseLandmarker.detect(image: mpImage)
-            guard !result.landmarks.isEmpty else { return nil }
-            
-            return result.landmarks.map { pose in
+            let poses = result.landmarks.map { pose in
                 pose.map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }
             }
+            guard let tracker else { return poses.isEmpty ? nil : poses }
+            // Partner clips keep each dancer in their own slot, frame to frame.
+            let visibility = result.landmarks.map { pose -> Float in
+                let seen = pose.compactMap { $0.visibility?.floatValue }
+                return seen.isEmpty ? 1 : seen.reduce(0, +) / Float(seen.count)
+            }
+            let tracked = tracker.update(poses: poses, visibility: visibility)
+            return tracked.isEmpty ? nil : tracked
         } catch {
             print("❌ MediaPipe error: \(error)")
-            return nil
-        }
-    }
-    
-    // MARK: - Apple Vision — Partner (17 points, multi-person)
-    private func detectPoseVision(
-        in cgImage: CGImage,
-        tracker: PartnerPoseTracker
-    ) -> [[CGPoint]]? {
-        let request = VNDetectHumanBodyPoseRequest()
-        let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:])
-        
-        do {
-            try handler.perform([request])
-            
-            return tracker.update(with: request.results ?? [])
-            
-        } catch {
-            print("❌ Vision error: \(error)")
             return nil
         }
     }

@@ -4,7 +4,6 @@ import UIKit
 
 struct LiveCameraView: UIViewRepresentable {
     @ObservedObject var poseDetector: PoseDetector
-    @ObservedObject var visionDetector: VisionPoseDetector
     let isPartnerMode: Bool
     let cameraPosition: AVCaptureDevice.Position
     let recordingRequested: Bool
@@ -39,7 +38,6 @@ struct LiveCameraView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator {
         Coordinator(
             poseDetector: poseDetector,
-            visionDetector: visionDetector,
             isPartnerMode: isPartnerMode,
             onRecordingStarted: onRecordingStarted,
             onRecordingFinished: onRecordingFinished,
@@ -59,7 +57,6 @@ struct LiveCameraView: UIViewRepresentable {
         private let videoOutput = AVCaptureVideoDataOutput()
         private let movieOutput = AVCaptureMovieFileOutput()
         private let poseDetector: PoseDetector
-        private let visionDetector: VisionPoseDetector
 
         private weak var previewLayer: AVCaptureVideoPreviewLayer?
         private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
@@ -77,19 +74,19 @@ struct LiveCameraView: UIViewRepresentable {
 
         init(
             poseDetector: PoseDetector,
-            visionDetector: VisionPoseDetector,
             isPartnerMode: Bool,
             onRecordingStarted: @escaping () -> Void,
             onRecordingFinished: @escaping (URL) -> Void,
             onError: @escaping (String) -> Void
         ) {
             self.poseDetector = poseDetector
-            self.visionDetector = visionDetector
             self.isPartnerMode = isPartnerMode
             self.desiredPosition = .back
             self.onRecordingStarted = onRecordingStarted
             self.onRecordingFinished = onRecordingFinished
             self.onError = onError
+            super.init()
+            poseDetector.setMode(numPoses: isPartnerMode ? 2 : 1)
         }
 
         func attachPreview(_ previewLayer: AVCaptureVideoPreviewLayer) {
@@ -118,7 +115,13 @@ struct LiveCameraView: UIViewRepresentable {
 
             sessionQueue.async { [weak self] in
                 guard let self else { return }
-                if modeChanged { self.visionDetector.resetTracking() }
+                if modeChanged {
+                    // On the frame queue, so no frame is mid-detection when the
+                    // landmarker is swapped for one that finds a different count.
+                    self.videoQueue.async {
+                        self.poseDetector.setMode(numPoses: isPartnerMode ? 2 : 1)
+                    }
+                }
                 self.desiredPosition = position
                 self.recordingRequested = recordingRequested
                 if self.configured, position != self.currentPosition, !self.movieOutput.isRecording {
@@ -199,7 +202,7 @@ struct LiveCameraView: UIViewRepresentable {
         }
 
         private func replaceVideoInput(position: AVCaptureDevice.Position) {
-            visionDetector.resetTracking()
+            poseDetector.resetTracking()
             let previousInput = session.inputs
                 .compactMap { $0 as? AVCaptureDeviceInput }
                 .first { $0.device.hasMediaType(.video) }
@@ -280,11 +283,7 @@ struct LiveCameraView: UIViewRepresentable {
                   let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
             lastDetectionTime = timestamp
 
-            if isPartnerMode {
-                visionDetector.detectPoses(in: pixelBuffer, orientation: .up)
-            } else {
-                poseDetector.detectAsync(pixelBuffer: pixelBuffer, timestamp: timestamp)
-            }
+            poseDetector.detectAsync(pixelBuffer: pixelBuffer, timestamp: timestamp)
         }
 
         func fileOutput(

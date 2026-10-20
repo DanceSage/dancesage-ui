@@ -1,9 +1,10 @@
 import CoreGraphics
 import Foundation
-import Vision
 
-/// Converts Vision observations into two stable dancer tracks shared by live
-/// capture and imported-video processing.
+/// Turns MediaPipe's two poses per frame into two stable dancer tracks, shared by
+/// live capture and imported-video processing. MediaPipe returns the people in
+/// no particular order; without this, Dancer 1 and Dancer 2 swap colours every
+/// time the model happens to list them the other way round.
 final class PartnerPoseTracker {
     private struct Candidate {
         let points: [CGPoint]
@@ -21,17 +22,15 @@ final class PartnerPoseTracker {
     private let lock = NSLock()
     private var tracks: [Track?] = [nil, nil]
 
-    private let minimumJointConfidence: Float = 0.25
-    private let minimumValidJoints = 6
+    /// MediaPipe always returns all 33 points, guessing the hidden ones; a pose
+    /// whose average visibility is this low is mostly guesswork and is dropped.
+    private let minimumPoseVisibility: Float = 0.25
     private let maximumMatchDistance: CGFloat = 0.42
     private let framesToHoldOccludedPose = 3
 
-    private let jointOrder: [VNHumanBodyPoseObservation.JointName] = [
-        .nose, .leftEye, .rightEye, .leftEar, .rightEar,
-        .leftShoulder, .rightShoulder, .leftElbow, .rightElbow,
-        .leftWrist, .rightWrist, .leftHip, .rightHip,
-        .leftKnee, .rightKnee, .leftAnkle, .rightAnkle
-    ]
+    private let pointCount = 33
+    /// MediaPipe's shoulders and hips: 11, 12, 23, 24.
+    private let torsoIndices = [11, 12, 23, 24]
 
     func reset() {
         lock.lock()
@@ -39,11 +38,13 @@ final class PartnerPoseTracker {
         lock.unlock()
     }
 
-    func update(with observations: [VNHumanBodyPoseObservation]) -> [[CGPoint]] {
+    /// `poses` are MediaPipe's normalised image landmarks, `visibility` the mean
+    /// landmark visibility of each pose, in the same order.
+    func update(poses: [[CGPoint]], visibility: [Float]) -> [[CGPoint]] {
         lock.lock()
         defer { lock.unlock() }
 
-        var candidates = observations.compactMap(makeCandidate)
+        var candidates = zip(poses, visibility).compactMap(makeCandidate)
             .sorted { $0.score > $1.score }
         if candidates.count > 2 {
             candidates.removeSubrange(2...)
@@ -125,27 +126,11 @@ final class PartnerPoseTracker {
         return visibleTracks()
     }
 
-    private func makeCandidate(from observation: VNHumanBodyPoseObservation) -> Candidate? {
-        var confidenceTotal: Float = 0
-        var validJointCount = 0
-
-        let points = jointOrder.map { joint -> CGPoint in
-            guard let point = try? observation.recognizedPoint(joint),
-                  point.confidence >= minimumJointConfidence else {
-                return CGPoint(x: -1, y: -1)
-            }
-            confidenceTotal += point.confidence
-            validJointCount += 1
-            return CGPoint(x: point.location.x, y: 1 - point.location.y)
-        }
-
-        guard validJointCount >= minimumValidJoints,
+    private func makeCandidate(points: [CGPoint], visibility: Float) -> Candidate? {
+        guard points.count == pointCount,
+              visibility >= minimumPoseVisibility,
               let center = bodyCenter(for: points) else { return nil }
-        return Candidate(
-            points: points,
-            center: center,
-            score: confidenceTotal / Float(validJointCount)
-        )
+        return Candidate(points: points, center: center, score: visibility)
     }
 
     private func makeTrack(from candidate: Candidate) -> Track {
@@ -206,7 +191,6 @@ final class PartnerPoseTracker {
     }
 
     private func bodyCenter(for points: [CGPoint]) -> CGPoint? {
-        let torsoIndices = [5, 6, 11, 12]
         let torso = torsoIndices.compactMap { index -> CGPoint? in
             guard points.indices.contains(index), isValid(points[index]) else { return nil }
             return points[index]
@@ -221,7 +205,7 @@ final class PartnerPoseTracker {
 
     private func visibleTracks() -> [[CGPoint]] {
         guard tracks.contains(where: { $0 != nil }) else { return [] }
-        let emptyPose = Array(repeating: CGPoint(x: -1, y: -1), count: jointOrder.count)
+        let emptyPose = Array(repeating: CGPoint(x: -1, y: -1), count: pointCount)
         let lastActiveIndex = tracks.lastIndex(where: { $0 != nil }) ?? 0
         return tracks[0...lastActiveIndex].map { $0?.points ?? emptyPose }
     }

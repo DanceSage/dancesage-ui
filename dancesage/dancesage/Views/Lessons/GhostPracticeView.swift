@@ -13,7 +13,6 @@ struct GhostPracticeView: View {
     let lesson: Lesson
 
     @StateObject private var poseDetector = PoseDetector()
-    @StateObject private var visionDetector = VisionPoseDetector()
 
     @State private var cameraPosition: AVCaptureDevice.Position = .front
     @State private var recordingRequested = false
@@ -51,7 +50,6 @@ struct GhostPracticeView: View {
         ZStack {
             LiveCameraView(
                 poseDetector: poseDetector,
-                visionDetector: visionDetector,
                 isPartnerMode: false,
                 cameraPosition: cameraPosition,
                 recordingRequested: recordingRequested,
