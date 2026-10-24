@@ -103,7 +103,7 @@ struct GhostPracticeView: View {
                     .disabled(isBusy)
 
                     HStack(spacing: 14) {
-                        Label(is3D ? "Teacher · 3D" : "Teacher", systemImage: "circle.fill")
+                        Label(is3D ? "Sage · 3D" : "Sage", systemImage: "circle.fill")
                             .foregroundColor(Color(red: 0.20, green: 0.95, blue: 0.92))
                         if !is3D {
                             Label("Good", systemImage: "circle.fill")
@@ -143,7 +143,7 @@ struct GhostPracticeView: View {
                             angleButton("Back", radians: .pi)
                             angleButton("Other side", radians: -.pi / 2)
                         }
-                        Text("Drag to turn the teacher. Your score arrives when the 3D fit does.")
+                        Text("Drag to turn your sage. Your score arrives when the 3D fit does.")
                             .font(.system(size: 12))
                             .foregroundColor(.white.opacity(0.75))
                             .padding(.horizontal, 12)
@@ -156,7 +156,7 @@ struct GhostPracticeView: View {
                 Spacer()
 
                 Button(action: startPractice) {
-                    Text(isBusy ? "Dancing…" : "Dance With the Teacher")
+                    Text(isBusy ? "Dancing…" : "Dance With Your Sage")
                         .font(.system(size: 19, weight: .bold))
                         .foregroundColor(.white)
                         .padding(.horizontal, 30)

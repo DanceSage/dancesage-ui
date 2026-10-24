@@ -22,17 +22,17 @@ struct PlatformVideoDetailView: View {
     /// both switches carry one, with the role as the fallback.
     /// Whoever this clip belongs to: what the caller said, or failing that what
     /// the post itself carries. A caller that says nothing is why two lessons
-    /// ended up labelled "Teacher".
+    /// ended up labelled "Sage".
     private var ownerName: String {
         let given = teacherName.trimmingCharacters(in: .whitespaces)
         if !given.isEmpty { return given }
         return video.by?.display_name ?? ""
     }
     private var theirName: String {
-        ownerName.isEmpty ? "Student" : ownerName
+        ownerName.isEmpty ? "Dancer" : ownerName
     }
     private var myName: String {
-        DanceSageAuth.shared.displayName ?? "Teacher"
+        DanceSageAuth.shared.displayName ?? "Sage"
     }
     /// The group it was shared through, when opened from one — a lesson made
     /// from it remembers, so attempts can go straight back there.
@@ -258,7 +258,7 @@ struct PlatformVideoDetailView: View {
                     Spacer(minLength: 0)
                     if let track, track.dancers.count > 1 {
                         DancerToggles(
-                            labels: replay != nil ? ["Teacher", "Student"]
+                            labels: replay != nil ? ["Sage", "Dancer"]
                                 : (0..<track.dancers.count).map { "Dancer \($0 + 1)" },
                             colors: SkeletonTrack.colours,
                             hidden: $hiddenDancers
@@ -557,7 +557,7 @@ struct PlatformVideoDetailView: View {
         }
         // The student's frames sit on the teacher's clock; their own clock (ta)
         // is what their video follows.
-        let pair = (recording(raw.j[0], named: "Teacher", times: raw.t),
+        let pair = (recording(raw.j[0], named: "Sage", times: raw.t),
                     recording(raw.j[1], named: video.title, times: raw.ta ?? raw.t))
 
         // Both videos, when they exist and the viewer may see them: the lesson's

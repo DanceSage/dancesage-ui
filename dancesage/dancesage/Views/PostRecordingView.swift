@@ -96,7 +96,7 @@ struct PostRecordingView: View {
                 Section {
                     Toggle(isOn: $sendBack) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Send to \(replyTeacher ?? replyGroup?.name ?? "the teacher") now")
+                            Text("Send to \(replyTeacher ?? replyGroup?.name ?? "your sage") now")
                             Text("Off, it waits under My lessons — send it later from here or from the web.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }

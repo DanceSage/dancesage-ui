@@ -24,10 +24,10 @@ struct LessonOverlayView: View {
     /// From the comparison result: the attempt reads better left/right flipped.
     let mirrored: Bool
     /// Who is who, by name. A dancer recognises "Abdu" and "Andy" faster than
-    /// "Teacher" and "You", and in a replay of two skeletons on one body that
+    /// "Sage" and "You", and in a replay of two skeletons on one body that
     /// half-second of recognition is the difference between reading it and
     /// working it out. Both fall back to the role when a name is missing.
-    var referenceLabel: String = "Teacher"
+    var referenceLabel: String = "Sage"
     var attemptLabel: String = "You"
     /// Videos, when this phone has them. A lesson file never carries the
     /// teacher's; the student's is kept only when the attempt was saved.
@@ -36,7 +36,7 @@ struct LessonOverlayView: View {
 
     private var refName: String {
         let trimmed = referenceLabel.trimmingCharacters(in: .whitespaces)
-        return trimmed.isEmpty ? "Teacher" : trimmed
+        return trimmed.isEmpty ? "Sage" : trimmed
     }
     private var attName: String {
         let trimmed = attemptLabel.trimmingCharacters(in: .whitespaces)

@@ -96,7 +96,7 @@ struct LessonsListView: View {
                 .foregroundColor(.white)
 
             Text(lessons.isEmpty
-                 ? "Moves a teacher shared with you."
+                 ? "Moves your sages shared with you."
                  : "Dance inside the move, and hear how close you are.")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundColor(.white.opacity(0.72))
@@ -112,7 +112,7 @@ struct LessonsListView: View {
     /// the attempts that came back. Tap an attempt for the replay.
     private var teaching: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("I'm teaching")
+            Text("I'm the sage")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundColor(.white.opacity(0.6))
                 .textCase(.uppercase)
@@ -123,7 +123,7 @@ struct LessonsListView: View {
                         Image(systemName: "graduationcap.fill").foregroundStyle(.orange)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(c.lesson.title).font(.headline).foregroundStyle(.white).lineLimit(1)
-                            Text("\(c.students.filter(\.accepted).count)/\(c.students.count) students"
+                            Text("\(c.students.filter(\.accepted).count)/\(c.students.count) dancers"
                                  + (c.series.map { " · \($0.name)" } ?? "")
                                  + " · \(c.attempts.count) attempt\(c.attempts.count == 1 ? "" : "s")")
                                 .font(.caption).foregroundStyle(.white.opacity(0.6))
@@ -302,7 +302,7 @@ struct LessonsListView: View {
             repaired = true
         }
 
-        // A lesson with no teacher's name shows "Teacher" in the replay, which is
+        // A lesson with no teacher's name shows "Sage" in the replay, which is
         // what the name was meant to replace. The platform knows who taught every
         // lesson, by the post it came from.
         let nameless = lessons.filter {

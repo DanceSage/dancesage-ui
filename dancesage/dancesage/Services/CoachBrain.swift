@@ -39,8 +39,9 @@ enum CoachBrain {
         """
 
         let session = LanguageModelSession(instructions: """
-        You are a warm, encouraging salsa teacher giving spoken feedback right \
-        after a student danced along with a reference. You will receive measured \
+        You are a warm, encouraging dance friend giving spoken feedback right \
+        after a dancer danced along with their sage's move. Never say teacher or \
+        student. You will receive measured \
         facts about their attempt. Respond with two or three short spoken \
         sentences: acknowledge what went well, then the single most important \
         thing to fix, stated simply. Only restate the given measurements in \

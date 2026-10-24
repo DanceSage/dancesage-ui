@@ -98,7 +98,7 @@ struct ComparisonResultsView: View {
                         if saved == nil {
                             Toggle(isOn: $sendNow) {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("Send to \(lesson.teacherName.isEmpty ? "the teacher" : lesson.teacherName) now")
+                                    Text("Send to \(lesson.teacherName.isEmpty ? "your sage" : lesson.teacherName) now")
                                     Text("Off, it waits under My lessons — send it later from the lesson, or from the web.")
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
@@ -204,7 +204,7 @@ struct ComparisonResultsView: View {
                     reference: reference,
                     attempt: attempt,
                     mirrored: result.mirrored,
-                    referenceLabel: lesson?.teacherName ?? "Teacher",
+                    referenceLabel: lesson?.teacherName ?? "Sage",
                     attemptLabel: DanceSageAuth.shared.displayName ?? "You",
                     referenceVideoURL: referenceVideoURL,
                     attemptVideoURL: attemptVideoURL
@@ -263,7 +263,7 @@ struct ComparisonResultsView: View {
             do {
                 try await DanceSagePlatform.shared.sendAttempt(id: id)
                 online.sentToTeacher = true
-                sentTo = lesson.teacherName.isEmpty ? "the teacher" : lesson.teacherName
+                sentTo = lesson.teacherName.isEmpty ? "your sage" : lesson.teacherName
             } catch {
                 saveError = "Saved, but could not send it: \(error.localizedDescription)"
             }

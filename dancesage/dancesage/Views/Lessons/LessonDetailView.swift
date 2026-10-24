@@ -20,7 +20,7 @@ struct LessonDetailView: View {
         List {
             Section {
                 if !lesson.teacherName.isEmpty {
-                    LabeledContent("Teacher", value: lesson.teacherName)
+                    LabeledContent("Sage", value: lesson.teacherName)
                 }
                 LabeledContent("Frames", value: "\(lesson.recording.frameCount)")
                 if let bpm = lesson.recording.bpm {
@@ -43,7 +43,7 @@ struct LessonDetailView: View {
                 Button {
                     showGhostPractice = true
                 } label: {
-                    Label("Dance With the Teacher", systemImage: "figure.2")
+                    Label("Dance With Your Sage", systemImage: "figure.2")
                         .font(.body.weight(.semibold))
                 }
 
@@ -53,12 +53,12 @@ struct LessonDetailView: View {
                     Label("Compare a Saved Recording", systemImage: "figure.dance")
                 }
             } footer: {
-                Text("Dance With the Teacher shows the teacher's skeleton over your live camera — follow it, and you're scored the moment it ends. Or compare any recording you saved earlier.")
+                Text("Dance With Your Sage shows your sage's skeleton over your live camera — follow it, and you're scored the moment it ends. Or compare any recording you saved earlier.")
             }
 
             Section {
                 if attempts.isEmpty {
-                    Text("No attempts yet. Dance With the Teacher to record one.")
+                    Text("No attempts yet. Dance With Your Sage to record one.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 } else {
@@ -76,7 +76,7 @@ struct LessonDetailView: View {
                                 .tint(.orange)
                             } else if attempt.sentToTeacher != true {
                                 Button { Task { await send(attempt) } } label: {
-                                    Label("Send to teacher", systemImage: "paperplane.fill")
+                                    Label("Send to your sage", systemImage: "paperplane.fill")
                                 }
                                 .tint(.orange)
                             }
@@ -89,7 +89,7 @@ struct LessonDetailView: View {
                             } else {
                                 if attempt.sentToTeacher != true {
                                     Button { Task { await send(attempt) } } label: {
-                                        Label("Send to teacher", systemImage: "paperplane.fill")
+                                        Label("Send to your sage", systemImage: "paperplane.fill")
                                     }
                                 }
                                 // The online copy is replaced — for attempts saved before
@@ -106,7 +106,7 @@ struct LessonDetailView: View {
                 Text("Your attempts")
             } footer: {
                 if !attempts.isEmpty {
-                    Text("Tap one to watch both skeletons together. Swipe right to save it online, then to send it to your teacher — only a saved attempt can be sent.")
+                    Text("Tap one to watch both skeletons together. Swipe right to save it online, then to send it to your sage — only a saved attempt can be sent.")
                 }
             }
 
@@ -248,7 +248,7 @@ struct LessonDetailView: View {
                         Label("Mirrored", systemImage: "arrow.left.and.right")
                     }
                     if attempt.sentToTeacher == true {
-                        Label("Sent to teacher", systemImage: "paperplane.fill")
+                        Label("Sent to your sage", systemImage: "paperplane.fill")
                     } else if attempt.isPosted {
                         Label("Saved online", systemImage: "icloud.fill")
                     }
@@ -266,7 +266,7 @@ struct LessonDetailView: View {
                 Button("Save online") { postTarget = attempt }
                     .font(.caption.weight(.semibold)).buttonStyle(.bordered).tint(.orange)
             } else if attempt.sentToTeacher != true {
-                Button("Send to teacher") { Task { await send(attempt) } }
+                Button("Send to your sage") { Task { await send(attempt) } }
                     .font(.caption.weight(.semibold)).buttonStyle(.borderedProminent).tint(.orange)
             } else {
                 Image(systemName: "play.circle").foregroundColor(.secondary)

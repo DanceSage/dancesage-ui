@@ -602,9 +602,9 @@ enum LessonComparator {
                 }
             case .posture:
                 if result.signedPrimaryDeviation > 0 {
-                    cues.append("Stand taller — you're leaning more than the teacher\(countSuffix).")
+                    cues.append("Stand taller — you're leaning more than your sage\(countSuffix).")
                 } else {
-                    cues.append("Match the teacher's lean — you're staying too upright\(countSuffix).")
+                    cues.append("Match your sage's lean — you're staying too upright\(countSuffix).")
                 }
             }
         }
